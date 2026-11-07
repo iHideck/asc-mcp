@@ -31,6 +31,7 @@ jobs:
             plugin/package-lock.json
       - run: npm ci
       - run: npm ci --prefix plugin
+      - run: make download-openapi
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
