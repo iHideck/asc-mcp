@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # 依存パッケージの更新。PR が増えすぎないよう、週1回・まとめて出す
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint が対応する版に合わせる
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # MCP サーバーを動かす Node（Claude Code と同じ 24）に型を合わせる
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  # GitHub Actions（SHA で固定しているので、更新はここで受け取る）
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']

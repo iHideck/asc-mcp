@@ -1,0 +1,5 @@
+node_modules
+coverage
+package-lock.json
+# 文書の表を崩さないよう、Markdown は整形しない
+**/*.md

@@ -1,0 +1,34 @@
+{
+  "name": "asc-mcp",
+  "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）。App Store へのリリース作業を、Claude Code に頼めるようにする",
+  "author": { "name": "iHideck", "url": "https://github.com/iHideck" },
+  "homepage": "https://github.com/iHideck/asc-mcp",
+  "repository": "https://github.com/iHideck/asc-mcp",
+  "keywords": ["app-store-connect", "ios", "release"],
+  "userConfig": {
+    "issuer_id": {
+      "type": "string",
+      "title": "Issuer ID",
+      "description": "App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」のページに出る Issuer ID",
+      "required": true,
+      "sensitive": true
+    },
+    "key_id": {
+      "type": "string",
+      "title": "Key ID",
+      "description": "同じページの、作った API キーの Key ID。秘密鍵は ~/.appstoreconnect/private_keys/AuthKey_<Key ID>.p8 に置く",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "asc": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/src/index.ts"],
+      "env": {
+        "ASC_ISSUER_ID": "${user_config.issuer_id}",
+        "ASC_KEY_ID": "${user_config.key_id}"
+      }
+    }
+  }
+}

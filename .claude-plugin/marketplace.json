@@ -1,0 +1,12 @@
+{
+  "name": "asc-mcp",
+  "description": "asc-mcp を配るマーケットプレイス",
+  "owner": { "name": "iHideck", "url": "https://github.com/iHideck" },
+  "plugins": [
+    {
+      "name": "asc-mcp",
+      "source": "./",
+      "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）。App Store へのリリース作業を、Claude Code に頼めるようにする"
+    }
+  ]
+}
