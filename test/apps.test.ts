@@ -1,24 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { listApps } from '../plugin/src/apps.ts';
+import { findApp, listApps } from '../plugin/src/apps.ts';
 import { AscApiError, createClient } from '../plugin/src/client.ts';
-import { fakeFetch, jsonResponse } from './fake-api.ts';
+import { fakeFetch, jsonResponse, page, requestedUrls, resource } from './fake-api.ts';
 
 function app(id: string, name: string, bundleId: string) {
-  return { type: 'apps', id, attributes: { name, bundleId } };
+  return resource('apps', id, { name, bundleId });
 }
 
 describe('listApps', () => {
   it('すべてのページをたどり、アプリの名前・バンドル ID・Apple ID を返す', async () => {
-    const fetchFn = fakeFetch(
-      jsonResponse(200, {
-        data: [app('1000000001', 'hikeshi', 'com.ihideck.hikeshi')],
-        links: { next: 'https://api.appstoreconnect.apple.com/v1/apps?cursor=AQ' },
-      }),
-      jsonResponse(200, {
-        data: [app('1000000002', 'とれろぐ', 'com.ihideck.machosterone')],
-        links: {},
-      }),
-    );
+    const fetchFn = fakeFetch({
+      '/v1/apps': [
+        page([app('1000000001', 'hikeshi', 'com.ihideck.hikeshi')], {
+          next: '/v1/apps?cursor=AQ',
+        }),
+        page([app('1000000002', 'とれろぐ', 'com.ihideck.machosterone')]),
+      ],
+    });
 
     const apps = await listApps(createClient(() => 'TOKEN', fetchFn));
 
@@ -26,23 +24,38 @@ describe('listApps', () => {
       { appleId: '1000000001', name: 'hikeshi', bundleId: 'com.ihideck.hikeshi' },
       { appleId: '1000000002', name: 'とれろぐ', bundleId: 'com.ihideck.machosterone' },
     ]);
-    const [url, init] = fetchFn.mock.calls[0] ?? [];
-    const firstUrl = new URL(String(url));
-    expect(firstUrl.pathname).toBe('/v1/apps');
-    expect(firstUrl.searchParams.get('fields[apps]')).toBe('name,bundleId');
-    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer TOKEN');
-    expect(String(fetchFn.mock.calls[1]?.[0])).toBe(
-      'https://api.appstoreconnect.apple.com/v1/apps?cursor=AQ',
+    const [first, second] = requestedUrls(fetchFn);
+    expect(first?.searchParams.get('fields[apps]')).toBe('name,bundleId');
+    expect(second?.href).toBe('https://api.appstoreconnect.apple.com/v1/apps?cursor=AQ');
+    expect(new Headers(fetchFn.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe(
+      'Bearer TOKEN',
     );
   });
 
+  it('データの無いページのあとは、links.next があってもたどらない', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': [
+        page([app('1000000001', 'hikeshi', 'com.ihideck.hikeshi')], {
+          next: '/v1/apps?cursor=AQ',
+        }),
+        page([], { next: '/v1/apps?cursor=Ag' }),
+        page([app('1000000002', 'とれろぐ', 'com.ihideck.machosterone')]),
+      ],
+    });
+
+    const apps = await listApps(createClient(() => 'TOKEN', fetchFn));
+
+    expect(apps.map(({ appleId }) => appleId)).toEqual(['1000000001']);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it('次のページの URL が App Store Connect API でなければ、トークンを送らずに止める', async () => {
-    const fetchFn = fakeFetch(
-      jsonResponse(200, {
-        data: [],
+    const fetchFn = fakeFetch({
+      '/v1/apps': jsonResponse(200, {
+        data: [app('1000000001', 'hikeshi', 'com.ihideck.hikeshi')],
         links: { next: 'https://example.com/v1/apps?cursor=AQ' },
       }),
-    );
+    });
 
     await expect(listApps(createClient(() => 'TOKEN', fetchFn))).rejects.toThrow(
       'https://example.com',
@@ -51,8 +64,8 @@ describe('listApps', () => {
   });
 
   it('エラーの応答は、状態のコードと、Apple のエラーと、直し方を返す', async () => {
-    const fetchFn = fakeFetch(
-      jsonResponse(401, {
+    const fetchFn = fakeFetch({
+      '/v1/apps': jsonResponse(401, {
         errors: [
           {
             status: '401',
@@ -62,7 +75,7 @@ describe('listApps', () => {
           },
         ],
       }),
-    );
+    });
 
     const result = listApps(createClient(() => 'TOKEN', fetchFn));
 
@@ -74,8 +87,8 @@ describe('listApps', () => {
   });
 
   it('契約の同意が切れているときは、ロールでなく、契約への同意を求める', async () => {
-    const fetchFn = fakeFetch(
-      jsonResponse(403, {
+    const fetchFn = fakeFetch({
+      '/v1/apps': jsonResponse(403, {
         errors: [
           {
             status: '403',
@@ -84,7 +97,7 @@ describe('listApps', () => {
           },
         ],
       }),
-    );
+    });
 
     const message = await listApps(createClient(() => 'TOKEN', fetchFn)).catch((error: unknown) =>
       error instanceof Error ? error.message : '',
@@ -107,14 +120,50 @@ describe('listApps', () => {
   });
 
   it('応答の形が違うときは、API のパスと、違う所を返す', async () => {
-    const fetchFn = fakeFetch(
-      jsonResponse(200, {
-        data: [{ type: 'apps', id: '1000000001', attributes: { bundleId: 'com.ihideck.hikeshi' } }],
-      }),
-    );
+    const fetchFn = fakeFetch({
+      '/v1/apps': page([resource('apps', '1000000001', { bundleId: 'com.ihideck.hikeshi' })]),
+    });
 
     await expect(listApps(createClient(() => 'TOKEN', fetchFn))).rejects.toThrow(
       /\/v1\/apps[\s\S]*attributes\.name/,
     );
+  });
+});
+
+describe('findApp', () => {
+  it('バンドル ID がまったく同じアプリを返す', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': page([
+        app('1000000003', 'ひけし 2', 'com.ihideck.hikeshi2'),
+        app('1000000001', 'ひけし', 'com.ihideck.hikeshi'),
+      ]),
+    });
+
+    const found = await findApp(
+      createClient(() => 'TOKEN', fetchFn),
+      'com.ihideck.hikeshi',
+    );
+
+    expect(found).toEqual({
+      appleId: '1000000001',
+      name: 'ひけし',
+      bundleId: 'com.ihideck.hikeshi',
+    });
+    expect(requestedUrls(fetchFn)[0]?.searchParams.get('filter[bundleId]')).toBe(
+      'com.ihideck.hikeshi',
+    );
+  });
+
+  it('無いときは、list_apps で一覧を見るよう返す', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': page([app('1000000003', 'ひけし 2', 'com.ihideck.hikeshi2')]),
+    });
+
+    await expect(
+      findApp(
+        createClient(() => 'TOKEN', fetchFn),
+        'com.ihideck.hikeshi',
+      ),
+    ).rejects.toThrow(/com\.ihideck\.hikeshi のアプリは[\s\S]*list_apps/);
   });
 });

@@ -56,10 +56,23 @@ describe('MCP サーバー', () => {
     server.notify('notifications/initialized');
 
     const listed = await server.request('tools/list', {});
+    const readOnly = expect.objectContaining({ readOnlyHint: true });
     expect(listed.result?.tools).toEqual([
+      expect.objectContaining({ name: 'list_apps', annotations: readOnly }),
       expect.objectContaining({
-        name: 'list_apps',
-        annotations: expect.objectContaining({ readOnlyHint: true }),
+        name: 'get_release_status',
+        annotations: readOnly,
+        inputSchema: expect.objectContaining({
+          required: ['bundleId'],
+          properties: expect.objectContaining({
+            platform: expect.objectContaining({ default: 'IOS' }),
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        name: 'get_localizations',
+        annotations: readOnly,
+        inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
     ]);
 

@@ -7,6 +7,8 @@ App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code �
 | ツール | すること |
 | :- | :- |
 | `list_apps` | アプリの名前・バンドル ID・Apple ID を返す |
+| `get_release_status` | 新しい5つのビルド（処理と TestFlight の状態、配ったグループ、アップロードのときの `ITMS-` の警告）と、公開中の版と次に出す版の状態を返す |
+| `get_localizations` | 版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す |
 
 ## 入れ方
 

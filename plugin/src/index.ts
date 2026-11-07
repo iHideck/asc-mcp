@@ -1,9 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { listApps } from './apps.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
 import { createClient, type AscClient } from './client.ts';
+import { getLocalizations } from './localizations.ts';
+import { getReleaseStatus } from './release-status.ts';
+import { PLATFORMS } from './versions.ts';
 
 let client: AscClient | undefined;
 
@@ -12,6 +16,15 @@ async function getClient(): Promise<AscClient> {
   client ??= createClient(createTokenSource(await loadCredentials(process.env)));
   return client;
 }
+
+function json(value: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+const appArguments = {
+  bundleId: z.string().min(1).describe('アプリのバンドル ID（例: com.ihideck.machosterone）'),
+  platform: z.enum(PLATFORMS).default('IOS').describe('版のプラットフォーム'),
+};
 
 const server = new McpServer({ name: 'asc-mcp', version: packageJson.version });
 
@@ -22,10 +35,46 @@ server.registerTool(
     description: 'App Store Connect にあるアプリの、名前・バンドル ID・Apple ID を返す。',
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  async () => {
-    const apps = await listApps(await getClient());
-    return { content: [{ type: 'text', text: JSON.stringify({ apps }, null, 2) }] };
+  async () => json({ apps: await listApps(await getClient()) }),
+);
+
+server.registerTool(
+  'get_release_status',
+  {
+    title: 'リリースの状態',
+    description:
+      '新しい順に5つのビルドと、公開中の版と次に出す版を返す。ビルドは、処理の状態・TestFlight の状態・配ったグループ・アップロードのときの ITMS- のエラーと警告（uploadIssues。記録が無ければ null）。版は、状態・公開のしかた・選んだビルド・段階的リリース。',
+    inputSchema: z.object(appArguments),
+    annotations: { readOnlyHint: true, openWorldHint: true },
   },
+  async ({ bundleId, platform }) =>
+    json(await getReleaseStatus(await getClient(), bundleId, platform)),
+);
+
+server.registerTool(
+  'get_localizations',
+  {
+    title: '掲載の文',
+    description:
+      '版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・サポート URL・マーケティング URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す。App 情報は版に結び付かず、公開中のものと、次の版のために編集中のものがあるので、状態を付けて返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          '読む版（例: 1.0.1）。省くと、いちばん新しい版（次に出す版があればそれ、なければ公開中の版）を読む',
+        ),
+      locales: z
+        .array(z.string().min(1))
+        .min(1)
+        .optional()
+        .describe('読む言語（例: ["ja", "en-US"]）。省くと、すべての言語を読む'),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (request) => json(await getLocalizations(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
