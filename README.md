@@ -29,8 +29,11 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 
 | コマンド | すること |
 | :- | :- |
-| `make setup` | 依存を入れる |
+| `make setup` | 依存を入れ、Apple の OpenAPI の仕様を落とす |
 | `make check` | CI と同じ検査（ESLint・整形・型の検査・テスト）を流す |
+| `make download-openapi` | Apple がいま配っている OpenAPI の仕様を、`.local/` に落とし直す |
 | `make validate-plugin` | プラグインとマーケットプレイスの設定を検査する |
+
+テストは、送るリクエストのパス・引数・値が、OpenAPI の仕様にあるかを確かめる。CI は毎回、Apple がいま配っている仕様を落として照らす。
 
 手元のソースで試すときは、`make setup` のあと、`claude --plugin-dir plugin` で Claude Code を起動する。
