@@ -54,6 +54,20 @@ export function specViolations(method: Method, url: URL): string[] {
   return violations;
 }
 
+// JSON Pointer（例: /components/schemas/AppVersionState/enum）の指す値を返す
+export function specAt(pointer: string): unknown {
+  return pointer
+    .split('/')
+    .slice(1)
+    .reduce<unknown>(
+      (node, key) =>
+        typeof node === 'object' && node !== null
+          ? (node as Record<string, unknown>)[key]
+          : undefined,
+      spec,
+    );
+}
+
 function loadSpec(): Spec {
   const path = new URL('../.local/openapi.oas.json', import.meta.url);
   try {

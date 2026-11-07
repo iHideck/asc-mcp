@@ -13,14 +13,66 @@ export class AscApiError extends Error {
   }
 }
 
+type Params = Record<string, string>;
+type Fetched<D, I> = { data: D[]; included: I[] };
+type Schemas<D, I> = { data: z.ZodType<D>; included?: z.ZodType<I> };
+
 export type AscClient = {
-  getAll<T>(path: string, params: Record<string, string>, item: z.ZodType<T>): Promise<T[]>;
+  getPage<D, I = never>(
+    path: string,
+    params: Params,
+    schemas: Schemas<D, I>,
+  ): Promise<Fetched<D, I>>;
+  getAll<D, I = never>(
+    path: string,
+    params: Params,
+    schemas: Schemas<D, I>,
+  ): Promise<Fetched<D, I>>;
 };
 
 const Page = z.object({
   data: z.array(z.unknown()),
+  included: z.array(z.unknown()).optional(),
   links: z.object({ next: z.string().optional() }).optional(),
 });
+
+const Identifier = z.object({ type: z.string(), id: z.string() });
+export const toOne = z.object({ data: Identifier.nullish() }).optional();
+export const toMany = z.object({ data: z.array(Identifier).optional() }).optional();
+
+type ResourceSchema = {
+  shape: {
+    type: { value: string };
+    attributes: { shape: object };
+    relationships?: { shape: object };
+  };
+};
+
+// include と fields[...] は、読む zod の形から作る。Apple は、fields[...] に無い属性と関連を返さない
+export function sparseFields(primary: ResourceSchema, ...included: ResourceSchema[]): Params {
+  const relationships = Object.keys(primary.shape.relationships?.shape ?? {});
+  const fields = [primary, ...included].map(({ shape }) => [
+    `fields[${shape.type.value}]`,
+    [...Object.keys(shape.attributes.shape), ...Object.keys(shape.relationships?.shape ?? {})].join(
+      ',',
+    ),
+  ]);
+  return {
+    ...(relationships.length > 0 ? { include: relationships.join(',') } : {}),
+    ...Object.fromEntries(fields),
+  };
+}
+
+export function findIncluded<I extends { type: string; id: string }, T extends I['type']>(
+  included: readonly I[],
+  type: T,
+  identifier: { id: string } | null | undefined,
+): Extract<I, { type: T }> | undefined {
+  return included.find(
+    (resource): resource is Extract<I, { type: T }> =>
+      resource.type === type && resource.id === identifier?.id,
+  );
+}
 
 const ErrorBody = z.object({
   errors: z.array(
@@ -66,25 +118,36 @@ export function createClient(token: () => string, fetchFn: typeof fetch = fetch)
     return body;
   }
 
-  async function getAll<T>(
+  async function read<D, I>(
     path: string,
-    params: Record<string, string>,
-    item: z.ZodType<T>,
-  ): Promise<T[]> {
-    const items: T[] = [];
+    params: Params,
+    schemas: Schemas<D, I>,
+    allPages: boolean,
+  ): Promise<Fetched<D, I>> {
+    const fetched: Fetched<D, I> = { data: [], included: [] };
     let next: URL | undefined = new URL(path, ORIGIN);
     for (const [name, value] of Object.entries(params)) {
       next.searchParams.set(name, value);
     }
     while (next !== undefined) {
       const page: z.infer<typeof Page> = parse(Page, await get(next), path);
-      items.push(...page.data.map((entry) => parse(item, entry, path)));
-      next = page.links?.next === undefined ? undefined : new URL(page.links.next);
+      fetched.data.push(...parse(z.array(schemas.data), page.data, path));
+      if (schemas.included !== undefined) {
+        fetched.included.push(...parse(z.array(schemas.included), page.included ?? [], path));
+      }
+      // Apple は、データの無いページのあとも、links.next を返し続けることがある
+      next =
+        allPages && page.data.length > 0 && page.links?.next !== undefined
+          ? new URL(page.links.next)
+          : undefined;
     }
-    return items;
+    return fetched;
   }
 
-  return { getAll };
+  return {
+    getPage: (path, params, schemas) => read(path, params, schemas, false),
+    getAll: (path, params, schemas) => read(path, params, schemas, true),
+  };
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown, path: string): T {
