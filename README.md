@@ -1,0 +1,36 @@
+# asc-mcp
+
+App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code のプラグインとして入れ、App Store へのリリース作業を Claude Code に頼めるようにする。
+
+## ツール
+
+| ツール | すること |
+| :- | :- |
+| `list_apps` | アプリの名前・バンドル ID・Apple ID を返す |
+
+## 入れ方
+
+MCP サーバーは、PATH にある Node（24 以上）で動く。
+
+1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager にする
+2. ダウンロードした `AuthKey_<Key ID>.p8` を `~/.appstoreconnect/private_keys/` に置き、`chmod 600` で自分だけが読めるようにする
+3. Claude Code で、次を打つ
+
+   ```
+   /plugin marketplace add iHideck/asc-mcp
+   /plugin install asc-mcp@asc-mcp
+   ```
+
+4. 設定の画面で、Issuer ID と Key ID を入れる。あとから直すときは、`/plugin configure asc-mcp@asc-mcp` を打つ
+
+## 開発
+
+プラグインは `plugin/` にある。Claude Code がプラグインと一緒に入れるのは、`plugin/package.json` の依存だけ。ESLint などの開発の道具は、ルートの `package.json` に置く。
+
+| コマンド | すること |
+| :- | :- |
+| `make setup` | 依存を入れる |
+| `make check` | CI と同じ検査（ESLint・整形・型の検査・テスト）を流す |
+| `make validate-plugin` | プラグインとマーケットプレイスの設定を検査する |
+
+手元のソースで試すときは、`make setup` のあと、`claude --plugin-dir plugin` で Claude Code を起動する。

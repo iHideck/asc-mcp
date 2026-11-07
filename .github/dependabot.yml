@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # 依存パッケージの更新。PR が増えすぎないよう、週1回・まとめて出す
+  # 開発の道具（ルート）
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint が対応する版に合わせる
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # MCP サーバーを動かす Node の下限（24）に型を合わせる
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  # プラグインが動くのに要るもの（plugin/）
+  - package-ecosystem: npm
+    directory: /plugin
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+  # GitHub Actions（SHA で固定しているので、更新はここで受け取る）
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
