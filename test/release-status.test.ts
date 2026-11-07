@@ -97,7 +97,7 @@ function routes() {
             appVersionState: REPLACED_VERSION_STATE,
             releaseType: 'MANUAL',
             earliestReleaseDate: null,
-            createdDate: '2026-08-01T10:00:00-07:00',
+            createdDate: null,
           },
           { build: null, appStoreVersionPhasedRelease: null },
         ),
@@ -111,13 +111,12 @@ function routes() {
             earliestReleaseDate: null,
             createdDate: '2026-11-07T11:00:00-08:00',
           },
-          { build: 'builds:b12', appStoreVersionPhasedRelease: null },
+          { build: null },
         ),
       ],
       {
         included: [
           resource('builds', 'b11', { version: '11', uploadedDate: '2026-10-01T10:00:00-07:00' }),
-          resource('builds', 'b12', { version: '12', uploadedDate: '2026-11-07T10:00:00-08:00' }),
           resource('appStoreVersionPhasedReleases', 'p100', {
             phasedReleaseState: 'COMPLETE',
             startDate: '2026-09-25T00:00:00-07:00',
@@ -174,7 +173,7 @@ describe('getReleaseStatus', () => {
           releaseType: 'AFTER_APPROVAL',
           earliestReleaseDate: null,
           createdDate: '2026-11-07T11:00:00-08:00',
-          build: { buildNumber: '12', uploadedDate: '2026-11-07T10:00:00-08:00' },
+          build: null,
           phasedRelease: null,
         },
         {
@@ -210,8 +209,56 @@ describe('getReleaseStatus', () => {
       'filter[preReleaseVersion.platform]': 'IOS',
       sort: '-uploadedDate',
       limit: '5',
-      include: 'preReleaseVersion,buildBetaDetail,betaGroups,buildUpload',
     });
+  });
+
+  it('アップロードの記録が無い・欠けているビルドも、ほかの項目と一緒に返す', async () => {
+    const build = (number: string, relationships: Record<string, string | null>) =>
+      resource(
+        'builds',
+        `b${number}`,
+        {
+          version: number,
+          uploadedDate: '2026-11-08T10:00:00-08:00',
+          expired: false,
+          processingState: 'PROCESSING',
+        },
+        relationships,
+      );
+    const fetchFn = fakeFetch({
+      ...routes(),
+      '/v1/builds': page(
+        [
+          build('13', {}),
+          build('14', { buildUpload: 'buildUploads:u14' }),
+          build('15', { buildUpload: 'buildUploads:u15' }),
+        ],
+        {
+          included: [
+            resource('buildUploads', 'u14', {
+              state: { warnings: [{ description: 'Missing code.' }] },
+            }),
+            resource('buildUploads', 'u15', { state: null }),
+          ],
+        },
+      ),
+    });
+
+    const status = await getReleaseStatus(
+      createClient(() => 'TOKEN', fetchFn),
+      BUNDLE_ID,
+      'IOS',
+    );
+
+    expect(
+      status.builds.map(({ buildNumber, uploadIssues }) => [buildNumber, uploadIssues]),
+    ).toEqual([
+      ['13', null],
+      ['14', { errors: [], warnings: [{ description: 'Missing code.' }] }],
+      ['15', null],
+    ]);
+    expect(status.builds[0]).toMatchObject({ version: null, testFlight: null, betaGroups: [] });
+    expect(status.versions.map(({ versionString }) => versionString)).toEqual(['1.0.1', '1.0.0']);
   });
 
   it('置き換わった版の状態の名前が、Apple の仕様にある', () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { findApp, type AppSummary } from './apps.ts';
-import { findIncluded, sparseFields, toMany, type AscClient } from './client.ts';
+import { sparseFields, type AscClient } from './client.ts';
 import { isCurrent, listVersions, type Platform, type Version } from './versions.ts';
 
 export const REPLACED_APP_INFO_STATE = 'REPLACED_WITH_NEW_INFO';
@@ -23,7 +23,6 @@ const AppInfo = z.object({
   type: z.literal('appInfos'),
   id: z.string(),
   attributes: z.object({ state: z.string() }),
-  relationships: z.object({ appInfoLocalizations: toMany }),
 });
 
 const AppInfoLocalization = z.object({
@@ -44,14 +43,16 @@ export type LocalizationsRequest = {
   locales?: string[];
 };
 
+type AppInfoText = {
+  state: string;
+  localizations: z.infer<typeof AppInfoLocalization>['attributes'][];
+};
+
 export type Localizations = {
   app: AppSummary;
   version: { versionString: string; state: string };
   versionLocalizations: z.infer<typeof VersionLocalization>['attributes'][];
-  appInfos: {
-    state: string;
-    localizations: z.infer<typeof AppInfoLocalization>['attributes'][];
-  }[];
+  appInfos: AppInfoText[];
 };
 
 export async function getLocalizations(
@@ -63,38 +64,33 @@ export async function getLocalizations(
   const [versionLocalizations, appInfos] = await Promise.all([
     client.getAll(
       `/v1/appStoreVersions/${version.id}/appStoreVersionLocalizations`,
-      {
-        ...sparseFields(VersionLocalization),
-        ...(locales === undefined ? {} : { 'filter[locale]': locales.join(',') }),
-        limit: '200',
-      },
+      { ...sparseFields(VersionLocalization), limit: '200' },
       { data: VersionLocalization },
     ),
-    client.getAll(
-      `/v1/apps/${app.appleId}/appInfos`,
-      { ...sparseFields(AppInfo, AppInfoLocalization), 'limit[appInfoLocalizations]': '50' },
-      { data: AppInfo, included: AppInfoLocalization },
-    ),
+    currentAppInfos(client, app.appleId),
   ]);
+  const versionTexts = versionLocalizations.data.map(({ attributes }) => attributes);
+  const known = new Set([
+    ...versionTexts.map(({ locale }) => locale),
+    ...appInfos.flatMap(({ localizations }) => localizations.map(({ locale }) => locale)),
+  ]);
+  // 言語のコードを当て推量で渡されたとき（ja-JP など）に、空の結果を「文が無い」と読み違えさせない
+  const unknown = (locales ?? []).filter((locale) => !known.has(locale));
+  if (unknown.length > 0) {
+    throw new Error(
+      `言語 ${unknown.join('、')} の文はありません。ある言語は ${[...known].join('、')} です。`,
+    );
+  }
+  const wanted = ({ locale }: { locale: string }) =>
+    locales === undefined || locales.includes(locale);
   return {
     app,
     version: { versionString: version.status.versionString, state: version.status.state },
-    versionLocalizations: versionLocalizations.data.map(({ attributes }) => attributes),
-    appInfos: appInfos.data
-      .filter(({ attributes }) => attributes.state !== REPLACED_APP_INFO_STATE)
-      .map(({ attributes, relationships }) => ({
-        state: attributes.state,
-        localizations: (relationships.appInfoLocalizations.data ?? [])
-          .flatMap((identifier) => {
-            const localization = findIncluded(
-              appInfos.included,
-              'appInfoLocalizations',
-              identifier,
-            );
-            return localization === undefined ? [] : [localization.attributes];
-          })
-          .filter(({ locale }) => locales === undefined || locales.includes(locale)),
-      })),
+    versionLocalizations: versionTexts.filter(wanted),
+    appInfos: appInfos.map(({ state, localizations }) => ({
+      state,
+      localizations: localizations.filter(wanted),
+    })),
   };
 }
 
@@ -115,5 +111,28 @@ function pickVersion(versions: Version[], versionString: string | undefined): Ve
     .join('、');
   throw new Error(
     `版 ${versionString} はありません。${known === '' ? '' : `いまある版は ${known}です。`}`,
+  );
+}
+
+async function currentAppInfos(client: AscClient, appleId: string): Promise<AppInfoText[]> {
+  const { data } = await client.getAll(
+    `/v1/apps/${appleId}/appInfos`,
+    { ...sparseFields(AppInfo), limit: '200' },
+    { data: AppInfo },
+  );
+  return Promise.all(
+    data
+      .filter(({ attributes }) => attributes.state !== REPLACED_APP_INFO_STATE)
+      .map(async ({ id, attributes }) => {
+        const localizations = await client.getAll(
+          `/v1/appInfos/${id}/appInfoLocalizations`,
+          { ...sparseFields(AppInfoLocalization), limit: '200' },
+          { data: AppInfoLocalization },
+        );
+        return {
+          state: attributes.state,
+          localizations: localizations.data.map(({ attributes }) => attributes),
+        };
+      }),
   );
 }

@@ -37,8 +37,8 @@ const Page = z.object({
 });
 
 const Identifier = z.object({ type: z.string(), id: z.string() });
-export const toOne = z.object({ data: Identifier.nullish() });
-export const toMany = z.object({ data: z.array(Identifier).optional() });
+export const toOne = z.object({ data: Identifier.nullish() }).optional();
+export const toMany = z.object({ data: z.array(Identifier).optional() }).optional();
 
 type ResourceSchema = {
   shape: {

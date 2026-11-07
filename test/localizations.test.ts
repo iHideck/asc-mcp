@@ -43,6 +43,7 @@ function appInfoLocalization(id: string, locale: string, subtitle: string) {
   });
 }
 
+// 置き換わった App 情報（i-old）の言語は読まないので、応答を用意しない
 function routes() {
   return {
     '/v1/apps': page([resource('apps', APP_ID, { name: 'ひけし', bundleId: BUNDLE_ID })]),
@@ -55,42 +56,20 @@ function routes() {
     ]),
     '/v1/appStoreVersions/v100/appStoreVersionLocalizations': page([
       versionLocalization('l100ja', 'ja', null),
+      versionLocalization('l100en', 'en-US', null),
     ]),
-    [`/v1/apps/${APP_ID}/appInfos`]: page(
-      [
-        resource(
-          'appInfos',
-          'i-live',
-          { state: 'READY_FOR_DISTRIBUTION' },
-          {
-            appInfoLocalizations: [
-              'appInfoLocalizations:a-live-ja',
-              'appInfoLocalizations:a-live-en',
-            ],
-          },
-        ),
-        resource(
-          'appInfos',
-          'i-edit',
-          { state: 'PREPARE_FOR_SUBMISSION' },
-          { appInfoLocalizations: ['appInfoLocalizations:a-edit-ja'] },
-        ),
-        resource(
-          'appInfos',
-          'i-old',
-          { state: REPLACED_APP_INFO_STATE },
-          { appInfoLocalizations: ['appInfoLocalizations:a-old-ja'] },
-        ),
-      ],
-      {
-        included: [
-          appInfoLocalization('a-live-ja', 'ja', '消火器などの点検と報告書づくり'),
-          appInfoLocalization('a-live-en', 'en-US', 'Fire safety self-inspection'),
-          appInfoLocalization('a-edit-ja', 'ja', '消火器の点検と報告書'),
-          appInfoLocalization('a-old-ja', 'ja', '昔のサブタイトル'),
-        ],
-      },
-    ),
+    [`/v1/apps/${APP_ID}/appInfos`]: page([
+      resource('appInfos', 'i-live', { state: 'READY_FOR_DISTRIBUTION' }),
+      resource('appInfos', 'i-edit', { state: 'PREPARE_FOR_SUBMISSION' }),
+      resource('appInfos', 'i-old', { state: REPLACED_APP_INFO_STATE }),
+    ]),
+    '/v1/appInfos/i-live/appInfoLocalizations': page([
+      appInfoLocalization('a-live-ja', 'ja', '消火器などの点検と報告書づくり'),
+      appInfoLocalization('a-live-en', 'en-US', 'Fire safety self-inspection'),
+    ]),
+    '/v1/appInfos/i-edit/appInfoLocalizations': page([
+      appInfoLocalization('a-edit-ja', 'ja', '消火器の点検と報告書'),
+    ]),
   };
 }
 
@@ -170,15 +149,28 @@ describe('getLocalizations', () => {
       versionString: '1.0.0',
       state: 'READY_FOR_DISTRIBUTION',
     });
-    expect(localizations.versionLocalizations.map(({ whatsNew }) => whatsNew)).toEqual([null]);
+    expect(localizations.versionLocalizations.map(({ locale }) => locale)).toEqual(['ja']);
     expect(
       localizations.appInfos.map(({ localizations }) => localizations.map(({ locale }) => locale)),
     ).toEqual([['ja'], ['ja']]);
-    const versionRequest = requestedUrls(fetchFn).find(({ pathname }) =>
-      pathname.endsWith('/appStoreVersionLocalizations'),
+    expect(requestedUrls(fetchFn).map(({ pathname }) => pathname)).toContain(
+      '/v1/appStoreVersions/v100/appStoreVersionLocalizations',
     );
-    expect(versionRequest?.pathname).toBe('/v1/appStoreVersions/v100/appStoreVersionLocalizations');
-    expect(versionRequest?.searchParams.get('filter[locale]')).toBe('ja');
+  });
+
+  it('無い言語を指すと、ある言語を添えて返す', async () => {
+    const fetchFn = fakeFetch(routes());
+
+    await expect(
+      getLocalizations(
+        createClient(() => 'TOKEN', fetchFn),
+        {
+          bundleId: BUNDLE_ID,
+          platform: 'IOS',
+          locales: ['ja-JP', 'ja'],
+        },
+      ),
+    ).rejects.toThrow('言語 ja-JP の文はありません。ある言語は ja、en-US です。');
   });
 
   it('無い版を指すと、いまある版を添えて返す', async () => {

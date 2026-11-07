@@ -40,16 +40,18 @@ const BetaGroup = z.object({
   attributes: z.object({ name: z.string(), isInternalGroup: z.boolean() }),
 });
 
-const UploadMessage = z.object({ code: z.string(), description: z.string() });
+const UploadMessage = z.object({ code: z.string().nullish(), description: z.string().nullish() });
 
 const BuildUpload = z.object({
   type: z.literal('buildUploads'),
   id: z.string(),
   attributes: z.object({
-    state: z.object({
-      errors: z.array(UploadMessage).nullish(),
-      warnings: z.array(UploadMessage).nullish(),
-    }),
+    state: z
+      .object({
+        errors: z.array(UploadMessage).nullish(),
+        warnings: z.array(UploadMessage).nullish(),
+      })
+      .nullish(),
   }),
 });
 
@@ -120,10 +122,11 @@ async function latestBuilds(
     const preRelease = findIncluded(
       included,
       'preReleaseVersions',
-      relationships.preReleaseVersion.data,
+      relationships.preReleaseVersion?.data,
     );
-    const beta = findIncluded(included, 'buildBetaDetails', relationships.buildBetaDetail.data);
-    const upload = findIncluded(included, 'buildUploads', relationships.buildUpload.data);
+    const beta = findIncluded(included, 'buildBetaDetails', relationships.buildBetaDetail?.data);
+    const upload = findIncluded(included, 'buildUploads', relationships.buildUpload?.data);
+    const uploadState = upload?.attributes.state ?? null;
     return {
       version: preRelease?.attributes.version ?? null,
       buildNumber: attributes.version,
@@ -137,19 +140,16 @@ async function latestBuilds(
               internal: beta.attributes.internalBuildState,
               external: beta.attributes.externalBuildState,
             },
-      betaGroups: (relationships.betaGroups.data ?? []).flatMap((identifier) => {
+      betaGroups: (relationships.betaGroups?.data ?? []).flatMap((identifier) => {
         const group = findIncluded(included, 'betaGroups', identifier);
         return group === undefined
           ? []
           : [{ name: group.attributes.name, internal: group.attributes.isInternalGroup }];
       }),
       uploadIssues:
-        upload === undefined
+        uploadState === null
           ? null
-          : {
-              errors: upload.attributes.state.errors ?? [],
-              warnings: upload.attributes.state.warnings ?? [],
-            },
+          : { errors: uploadState.errors ?? [], warnings: uploadState.warnings ?? [] },
     };
   });
 }

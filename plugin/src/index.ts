@@ -23,7 +23,7 @@ function json(value: unknown) {
 
 const appArguments = {
   bundleId: z.string().min(1).describe('アプリのバンドル ID（例: com.ihideck.machosterone）'),
-  platform: z.enum(PLATFORMS).default('IOS').describe('版のプラットフォーム'),
+  platform: z.enum(PLATFORMS).default('IOS'),
 };
 
 const server = new McpServer({ name: 'asc-mcp', version: packageJson.version });
@@ -56,7 +56,7 @@ server.registerTool(
   {
     title: '掲載の文',
     description:
-      '版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・サポート URL・マーケティング URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す。App 情報は版に結び付かず、公開中のものと、次の版のために編集中のものがあるので、状態を付けて返す。',
+      '版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・サポート URL・マーケティング URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す。App 情報は版に結び付かず、公開中のものと、次の版のために編集中のものがあるので、状態を付けて返す。言語が多くて出力が大きいときは、locales で絞る。',
     inputSchema: z.object({
       ...appArguments,
       versionString: z

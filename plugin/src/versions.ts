@@ -14,7 +14,7 @@ const AppStoreVersion = z.object({
     appVersionState: z.string(),
     releaseType: z.string().nullable(),
     earliestReleaseDate: z.string().nullable(),
-    createdDate: z.string(),
+    createdDate: z.string().nullable(),
   }),
   relationships: z.object({ build: toOne, appStoreVersionPhasedRelease: toOne }),
 });
@@ -40,7 +40,7 @@ export type VersionStatus = {
   state: string;
   releaseType: string | null;
   earliestReleaseDate: string | null;
-  createdDate: string;
+  createdDate: string | null;
   build: { buildNumber: string; uploadedDate: string } | null;
   phasedRelease: {
     state: string;
@@ -51,7 +51,6 @@ export type VersionStatus = {
 
 export type Version = { id: string; status: VersionStatus };
 
-// 作った日の新しい順に返す
 export async function listVersions(
   client: AscClient,
   appleId: string,
@@ -68,11 +67,11 @@ export async function listVersions(
   );
   return data
     .map(({ id, attributes, relationships }) => {
-      const build = findIncluded(included, 'builds', relationships.build.data);
+      const build = findIncluded(included, 'builds', relationships.build?.data);
       const phased = findIncluded(
         included,
         'appStoreVersionPhasedReleases',
-        relationships.appStoreVersionPhasedRelease.data,
+        relationships.appStoreVersionPhasedRelease?.data,
       );
       return {
         id,
@@ -100,7 +99,12 @@ export async function listVersions(
         },
       };
     })
-    .sort((a, b) => Date.parse(b.status.createdDate) - Date.parse(a.status.createdDate));
+    .sort((a, b) => createdTime(b) - createdTime(a));
+}
+
+// 作った日の無い版は、いちばん古い版として扱う
+function createdTime({ status }: Version): number {
+  return status.createdDate === null ? 0 : Date.parse(status.createdDate);
 }
 
 export function isCurrent(version: Version): boolean {
