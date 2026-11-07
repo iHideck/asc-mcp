@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { listApps } from './apps.ts';
-import { AscApiError, createClient } from './client.ts';
+import { listApps } from '../plugin/src/apps.ts';
+import { AscApiError, createClient } from '../plugin/src/client.ts';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -81,5 +81,50 @@ describe('listApps', () => {
       status: 401,
       message: expect.stringMatching(/401[\s\S]*Issuer ID[\s\S]*NOT_AUTHORIZED/),
     });
+  });
+
+  it('契約の同意が切れているときは、ロールでなく、契約への同意を求める', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(403, {
+        errors: [
+          {
+            status: '403',
+            code: 'FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED',
+            title: 'A required agreement is missing or has expired.',
+          },
+        ],
+      }),
+    );
+
+    const message = await listApps(createClient(() => 'TOKEN', fetchFn)).catch((error: unknown) =>
+      error instanceof Error ? error.message : '',
+    );
+
+    expect(message).toContain('契約に同意');
+    expect(message).not.toContain('ロール');
+  });
+
+  it('接続できないときは、fetch が隠した原因を添えて返す', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockRejectedValueOnce(
+      new TypeError('fetch failed', {
+        cause: new Error('getaddrinfo ENOTFOUND api.appstoreconnect.apple.com'),
+      }),
+    );
+
+    await expect(listApps(createClient(() => 'TOKEN', fetchFn))).rejects.toThrow(
+      /接続できませんでした.*ENOTFOUND/,
+    );
+  });
+
+  it('応答の形が違うときは、API のパスと、違う所を返す', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(200, {
+        data: [{ type: 'apps', id: '1000000001', attributes: { bundleId: 'com.ihideck.hikeshi' } }],
+      }),
+    );
+
+    await expect(listApps(createClient(() => 'TOKEN', fetchFn))).rejects.toThrow(
+      /\/v1\/apps[\s\S]*attributes\.name/,
+    );
   });
 });

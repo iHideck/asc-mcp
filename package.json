@@ -1,8 +1,8 @@
 {
-  "name": "asc-mcp",
+  "name": "asc-mcp-dev",
   "version": "0.0.0",
   "private": true,
-  "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）",
+  "description": "asc-mcp を作るための道具（ESLint・Prettier・TypeScript・Vitest）",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -13,10 +13,6 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc",
     "test": "vitest run"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/server": "^2.4.0",
-    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

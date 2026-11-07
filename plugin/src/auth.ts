@@ -53,7 +53,7 @@ export async function loadCredentials(
     pem = await readFile(path, 'utf8');
   } catch {
     throw new ConfigError(
-      `秘密鍵のファイル ${path} を読めません。App Store Connect からダウンロードした AuthKey_${keyId.data}.p8 を、この場所に置いてください。`,
+      `秘密鍵のファイル ${path} を読めません。App Store Connect からダウンロードした .p8 のファイルを、このパスに置いてください。`,
     );
   }
   let privateKey: KeyObject;

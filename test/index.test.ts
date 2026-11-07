@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 type JsonRpcResponse = { id: number; result?: Record<string, unknown>; error?: unknown };
 
-const ENTRY = fileURLToPath(new URL('./index.ts', import.meta.url));
+const ENTRY = fileURLToPath(new URL('../plugin/src/index.ts', import.meta.url));
 const stops: (() => void)[] = [];
 
 afterEach(() => {

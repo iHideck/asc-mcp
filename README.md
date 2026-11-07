@@ -25,10 +25,12 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 
 ## 開発
 
+プラグインは `plugin/` にある。Claude Code がプラグインと一緒に入れるのは、`plugin/package.json` の依存だけ。ESLint などの開発の道具は、ルートの `package.json` に置く。
+
 | コマンド | すること |
 | :- | :- |
 | `make setup` | 依存を入れる |
 | `make check` | CI と同じ検査（ESLint・整形・型の検査・テスト）を流す |
 | `make validate-plugin` | プラグインとマーケットプレイスの設定を検査する |
 
-手元のソースで試すときは、`make setup` のあと、`claude --plugin-dir .` で Claude Code を起動する。
+手元のソースで試すときは、`make setup` のあと、`claude --plugin-dir plugin` で Claude Code を起動する。

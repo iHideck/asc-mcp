@@ -9,7 +9,7 @@ import {
   loadCredentials,
   privateKeyPath,
   signToken,
-} from './auth.ts';
+} from '../plugin/src/auth.ts';
 
 const ISSUER_ID = '57246542-96fe-1a63-e053-0824d011072a';
 const KEY_ID = '2X9R4HXF34';

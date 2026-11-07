@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "asc-mcp",
-      "source": "./",
+      "source": "./plugin",
       "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）。App Store へのリリース作業を、Claude Code に頼めるようにする"
     }
   ]
