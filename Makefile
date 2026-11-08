@@ -29,6 +29,12 @@ check: # CI と同じ検査（ESLint・整形・型・テスト）を流す
 format: # Prettier で整形する
 	npm run format
 
+.PHONY: run-claude
+# プラグインの設定（/plugin configure）は、--plugin-dir で読んだプラグインには渡らないので、環境変数で渡す
+run-claude: # 手元のソースの MCP サーバーをつないで、Claude Code を起動する（ASC_ISSUER_ID と ASC_KEY_ID が要る）
+	@test -n "$$ASC_ISSUER_ID" && test -n "$$ASC_KEY_ID" || { echo 'ASC_ISSUER_ID と ASC_KEY_ID に、Issuer ID と Key ID を入れてください' >&2; exit 1; }
+	claude --strict-mcp-config --mcp-config dev/mcp.json
+
 .PHONY: validate-plugin
 # --strict は、plugin.json に version が無いことを警告して落とす。version を書くと、上げるまで利用者に更新が届かないので書かない
 validate-plugin: # プラグインとマーケットプレイスの設定を検査する
