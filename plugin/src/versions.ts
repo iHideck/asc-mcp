@@ -145,8 +145,12 @@ export function isFirstRelease(versions: Version[]): boolean {
 }
 
 export function notEditableError({ status }: Version): Error {
+  const next =
+    status.state === 'READY_FOR_REVIEW'
+      ? 'この版は、まだ出していない審査への提出に入っています。submit_for_review で出すか、App Store Connect で提出から外してください。'
+      : '審査中の版は、審査から外すと変えられるようになります。';
   return new Error(
-    `版 ${status.versionString} は、いま ${status.state} なので変えられません。変えられるのは、提出の準備中か、却下されたあとの版です。審査中の版は、審査から外すと変えられるようになります。`,
+    `版 ${status.versionString} は、いま ${status.state} なので変えられません。変えられるのは、提出の準備中か、却下されたあとの版です。${next}`,
   );
 }
 

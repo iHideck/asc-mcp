@@ -15,7 +15,7 @@ import {
 const ReviewSubmission = z.object({
   type: z.literal('reviewSubmissions'),
   id: z.string(),
-  attributes: z.object({ state: z.string(), submittedDate: z.string().nullable() }),
+  attributes: z.object({ state: z.string() }),
 });
 
 const SubmissionItem = z.object({
@@ -31,20 +31,24 @@ const ItemVersion = z.object({
   attributes: z.object({ versionString: z.string() }),
 });
 
+// 読む提出の状態。CANCELING も読むのは、取り下げの最中に呼ばれたとき、そうと分かるようにするため
 export const OPEN_SUBMISSION_STATES: readonly string[] = [
   'READY_FOR_REVIEW',
   'WAITING_FOR_REVIEW',
   'IN_REVIEW',
   'UNRESOLVED_ISSUES',
+  'CANCELING',
 ];
 
-export const SUBMITTED_VERSION_STATES: readonly string[] = [
+// 審査に出してある提出の状態。版の状態は、出したあと遅れて変わるので、提出の状態で決める
+export const SENT_SUBMISSION_STATES: readonly string[] = ['WAITING_FOR_REVIEW', 'IN_REVIEW'];
+
+// 版の READY_FOR_REVIEW は、提出に入れたが、まだ出していない状態
+const IN_SUBMISSION_VERSION_STATES: readonly string[] = [
   'READY_FOR_REVIEW',
   'WAITING_FOR_REVIEW',
   'IN_REVIEW',
 ];
-
-const CANCELABLE_SUBMISSION_STATES: readonly string[] = ['WAITING_FOR_REVIEW', 'IN_REVIEW'];
 
 export type ReviewRequest = {
   bundleId: string;
@@ -63,7 +67,8 @@ export type ReviewResult = {
   after: ReviewState;
 };
 
-type Submission = { id: string; state: string; versionIds: string[] };
+type Item = { id: string; state: string; versionId: string | null };
+type Submission = { id: string; state: string; items: Item[] };
 
 export async function submitForReview(
   client: AscClient,
@@ -71,39 +76,51 @@ export async function submitForReview(
 ): Promise<ReviewResult> {
   const app = await findApp(client, request.bundleId);
   const versions = await listVersions(client, app.appleId, request.platform);
-  const version =
-    request.versionString === undefined
-      ? versions.find(
-          (candidate) =>
-            isEditable(candidate) || SUBMITTED_VERSION_STATES.includes(candidate.status.state),
-        )
-      : versions.find(({ status }) => status.versionString === request.versionString);
-  if (version === undefined) {
-    throw new Error(
-      request.versionString === undefined
-        ? '審査に出せる版（提出の準備中か、却下されたあとの版）がありません。ensure_version で、次に出す版を用意してください。'
-        : `版 ${request.versionString} はありません。`,
-    );
-  }
+  const version = pickVersion(
+    versions,
+    request.versionString,
+    (candidate) =>
+      isEditable(candidate) || IN_SUBMISSION_VERSION_STATES.includes(candidate.status.state),
+    '審査に出せる版（提出の準備中か、却下されたあとの版）がありません。ensure_version で、次に出す版を用意してください。',
+  );
+  const name = version.status.versionString;
   const submissions = await openSubmissions(client, app.appleId, request.platform);
-  const mine = submissions.find(({ versionIds }) => versionIds.includes(version.id));
+  const mine = submissionOf(submissions, version.id);
   const before = { version: version.status.state, submission: mine?.state ?? null };
-  if (SUBMITTED_VERSION_STATES.includes(version.status.state)) {
+  const sent =
+    mine === undefined
+      ? SENT_SUBMISSION_STATES.includes(version.status.state)
+      : SENT_SUBMISSION_STATES.includes(mine.state);
+  if (sent) {
     return result(app, request.platform, version, before, before);
   }
-  if (isDistributed(version)) {
-    throw new Error(`版 ${version.status.versionString} は、公開したことのある版です。`);
+  if (mine?.state === 'CANCELING') {
+    throw new Error(
+      `版 ${name} の審査は、取り下げの最中です。取り下げが終わってから（数分かかります）、もう一度呼んでください。`,
+    );
   }
-  if (!isEditable(version)) {
-    throw notEditableError(version);
+  if (isDistributed(version)) {
+    throw new Error(`版 ${name} は、公開したことのある版です。`);
+  }
+  if (mine === undefined && !isEditable(version)) {
+    throw version.status.state === 'READY_FOR_REVIEW'
+      ? new Error(
+          `版 ${name} は審査への提出に入っていますが、その提出が見つかりません。App Store Connect で確かめてください。`,
+        )
+      : notEditableError(version);
   }
   await checkBuild(client, version);
-  // 作りかけの提出（または、却下されて直しを待つ提出）があれば使う。やり直したときに、提出を二重に作らないため
-  const reusable = mine ?? submissions.find(({ state }) => state === 'READY_FOR_REVIEW');
-  const name = version.status.versionString;
+  // 作りかけの提出があれば使う。やり直したときに、提出を二重に作らないため
+  const reused = mine ?? submissions.find(({ state }) => state === 'READY_FOR_REVIEW');
+  const others = reused?.items.filter(({ versionId }) => versionId !== version.id) ?? [];
+  if (others.length > 0) {
+    throw new Error(
+      `審査への提出に、版 ${name} のほかに ${others.length} 件（App 内課金など）が入っていて、出すと一緒に審査に出ます。一緒に出すかを、App Store Connect で確かめてください。何も変えていません。`,
+    );
+  }
   const progress = trackProgress();
   const submissionId =
-    reusable?.id ??
+    reused?.id ??
     (await progress.write('審査への提出を作る', '審査への提出を作りました', () =>
       client.create(
         'reviewSubmissions',
@@ -111,7 +128,8 @@ export async function submitForReview(
         { app: { type: 'apps', id: app.appleId } },
       ),
     ));
-  if (!(reusable?.versionIds.includes(version.id) ?? false)) {
+  const item = reused?.items.find(({ versionId }) => versionId === version.id);
+  if (item === undefined) {
     await progress.write(`提出に版 ${name} を入れる`, `提出に版 ${name} を入れました`, () =>
       client.create(
         'reviewSubmissionItems',
@@ -121,6 +139,13 @@ export async function submitForReview(
           appStoreVersion: { type: 'appStoreVersions', id: version.id },
         },
       ),
+    );
+  } else if (item.state === 'REJECTED') {
+    // 却下された中身は、直したことにしてからでないと、出し直せない
+    await progress.write(
+      `却下された版 ${name} を、直したことにする`,
+      `却下された版 ${name} を、直したことにしました`,
+      () => client.update('reviewSubmissionItems', item.id, { resolved: true }),
     );
   }
   await progress.write(`版 ${name} を審査に出す`, `版 ${name} を審査に出しました`, () =>
@@ -138,29 +163,42 @@ export async function cancelReview(
 ): Promise<ReviewResult> {
   const app = await findApp(client, request.bundleId);
   const versions = await listVersions(client, app.appleId, request.platform);
-  const version =
-    request.versionString === undefined
-      ? versions.find(({ status }) => SUBMITTED_VERSION_STATES.includes(status.state))
-      : versions.find(({ status }) => status.versionString === request.versionString);
-  if (version === undefined) {
-    throw new Error(
-      request.versionString === undefined
-        ? '審査に出している版がありません。'
-        : `版 ${request.versionString} はありません。`,
-    );
-  }
   const submissions = await openSubmissions(client, app.appleId, request.platform);
-  const mine = submissions.find(({ versionIds }) => versionIds.includes(version.id));
+  const canceling = submissions
+    .filter(({ state }) => state === 'CANCELING')
+    .flatMap(({ items }) => items.map(({ versionId }) => versionId));
+  const version = pickVersion(
+    versions,
+    request.versionString,
+    (candidate) => IN_SUBMISSION_VERSION_STATES.includes(candidate.status.state),
+    '審査に出している版がありません。',
+    (candidate) => canceling.includes(candidate.id) || isEditable(candidate),
+  );
+  const name = version.status.versionString;
+  const mine = submissionOf(submissions, version.id);
   const before = { version: version.status.state, submission: mine?.state ?? null };
-  if (mine === undefined || !CANCELABLE_SUBMISSION_STATES.includes(mine.state)) {
+  if (mine?.state === 'CANCELING') {
+    return result(app, request.platform, version, before, before);
+  }
+  if (mine === undefined || !SENT_SUBMISSION_STATES.includes(mine.state)) {
+    if (mine?.state === 'READY_FOR_REVIEW') {
+      throw new Error(
+        `版 ${name} は、まだ出していない審査への提出に入っています。取り下げるものはありません。submit_for_review で出すか、App Store Connect で提出から外してください。`,
+      );
+    }
     if (isEditable(version)) {
       return result(app, request.platform, version, before, before);
     }
     throw new Error(
-      `版 ${version.status.versionString} には、取り下げられる審査への提出がありません（版の状態: ${version.status.state}）。`,
+      `版 ${name} には、取り下げられる審査への提出がありません（版の状態: ${version.status.state}）。`,
     );
   }
-  const name = version.status.versionString;
+  const others = mine.items.filter(({ versionId }) => versionId !== version.id);
+  if (others.length > 0) {
+    throw new Error(
+      `審査への提出に、版 ${name} のほかに ${others.length} 件（App 内課金など）が入っていて、取り下げると一緒に取り下げます。App Store Connect で確かめてください。何も変えていません。`,
+    );
+  }
   const progress = trackProgress();
   await progress.write(`版 ${name} の審査を取り下げる`, `版 ${name} の審査を取り下げました`, () =>
     client.update('reviewSubmissions', mine.id, { canceled: true }),
@@ -169,6 +207,29 @@ export async function cancelReview(
     readState(client, app.appleId, request.platform, version.id, mine.id),
   );
   return result(app, request.platform, version, before, after);
+}
+
+function pickVersion(
+  versions: Version[],
+  versionString: string | undefined,
+  fits: (version: Version) => boolean,
+  noneMessage: string,
+  fallback: (version: Version) => boolean = () => false,
+): Version {
+  const version =
+    versionString === undefined
+      ? (versions.find(fits) ?? versions.find(fallback))
+      : versions.find(({ status }) => status.versionString === versionString);
+  if (version === undefined) {
+    throw new Error(
+      versionString === undefined ? noneMessage : `版 ${versionString} はありません。`,
+    );
+  }
+  return version;
+}
+
+function submissionOf(submissions: Submission[], versionId: string): Submission | undefined {
+  return submissions.find(({ items }) => items.some((item) => item.versionId === versionId));
 }
 
 function result(
@@ -213,10 +274,13 @@ async function openSubmissions(
       return {
         id,
         state: attributes.state,
-        versionIds: items.data.flatMap(({ relationships }) => {
-          const versionId = relationships.appStoreVersion?.data?.id;
-          return versionId === undefined ? [] : [versionId];
-        }),
+        items: items.data
+          .filter(({ attributes }) => attributes.state !== 'REMOVED')
+          .map(({ id: itemId, attributes, relationships }) => ({
+            id: itemId,
+            state: attributes.state,
+            versionId: relationships.appStoreVersion?.data?.id ?? null,
+          })),
       };
     }),
   );
