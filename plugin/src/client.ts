@@ -34,7 +34,8 @@ export type AscClient = {
   create(
     type: string,
     attributes: Attributes,
-    relationships: Record<string, Identifier>,
+    relationships: Record<string, Identifier | Identifier[]>,
+    included?: object[],
   ): Promise<string>;
   update(
     type: string,
@@ -206,9 +207,13 @@ export function createClient(
         path,
       ).data;
     },
-    async create(type, attributes, relationships) {
-      const path = `/v1/${type}`;
-      const body = { data: { type, ...resourceBody(attributes, relationships) } };
+    async create(type, attributes, relationships, included) {
+      // 配信する国（appAvailabilities）は、v2 の API にしか無い
+      const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
+      const body = {
+        data: { type, ...resourceBody(attributes, relationships) },
+        ...(included === undefined ? {} : { included }),
+      };
       const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
       if (!created.success) {
         throw new Error(
@@ -234,7 +239,10 @@ export function createClient(
 }
 
 // 仕様に attributes や relationships が無い本文（審査への提出の中身・App 情報の更新など）があるので、空なら送らない
-function resourceBody(attributes: Attributes, relationships: Record<string, Identifier>) {
+function resourceBody(
+  attributes: Attributes,
+  relationships: Record<string, Identifier | Identifier[]>,
+) {
   return {
     ...(Object.keys(attributes).length === 0 ? {} : { attributes }),
     ...(Object.keys(relationships).length === 0
@@ -245,6 +253,18 @@ function resourceBody(attributes: Attributes, relationships: Record<string, Iden
           ),
         }),
   };
+}
+
+// 作る前の価格や配信する国を読むと、Apple は 404 を返す
+export async function nullIfMissing<T>(read: Promise<T | null>): Promise<T | null> {
+  try {
+    return await read;
+  } catch (error) {
+    if (error instanceof AscApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function describeDetail(error: z.infer<typeof ErrorDetail>): string {
