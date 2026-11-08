@@ -14,7 +14,7 @@ App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code �
 
 MCP サーバーは、PATH にある Node（24 以上）で動く。
 
-1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager にする
+1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager か Admin にする。そのロールのチームキーがもうあれば、それを使える
 2. ダウンロードした `AuthKey_<Key ID>.p8` を `~/.appstoreconnect/private_keys/` に置き、`chmod 600` で自分だけが読めるようにする
 3. Claude Code で、次を打つ
 
