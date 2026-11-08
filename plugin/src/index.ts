@@ -8,6 +8,7 @@ import { createClient, isReadOnly, type AscClient } from './client.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
+import { selectBuild } from './select-build.ts';
 import { PLATFORMS } from './versions.ts';
 
 let client: AscClient | undefined;
@@ -123,6 +124,31 @@ server.registerTool(
     },
   },
   async (request) => json(await ensureVersion(await getClient(), request)),
+);
+
+server.registerTool(
+  'select_build',
+  {
+    title: 'ビルドを選ぶ',
+    description:
+      '版に、審査に出すビルドを選ぶ。選べるのは、処理が済み（VALID）、期限が切れておらず、ビルドの版（CFBundleShortVersionString）が版の番号と同じビルド。版は、編集できるもの（提出の準備中・却下のあと）だけ。選ぶ前と後のビルドを返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('ビルドを選ぶ版（例: 1.0.2）。省くと、編集できる版に選ぶ'),
+      buildNumber: z.string().min(1).describe('ビルドの番号（CFBundleVersion。例: 12）'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await selectBuild(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
