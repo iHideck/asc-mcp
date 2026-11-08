@@ -36,6 +36,7 @@ export type AscClient = {
     relationships: Record<string, Identifier>,
   ): Promise<string>;
   update(type: string, id: string, attributes: Attributes): Promise<void>;
+  setRelationship(type: string, id: string, name: string, target: Identifier): Promise<void>;
   remove(type: string, id: string): Promise<void>;
 };
 
@@ -213,6 +214,11 @@ export function createClient(
     },
     async update(type, id, attributes) {
       await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), { data: { type, id, attributes } });
+    },
+    async setRelationship(type, id, name, target) {
+      await call('PATCH', new URL(`/v1/${type}/${id}/relationships/${name}`, ORIGIN), {
+        data: target,
+      });
     },
     async remove(type, id) {
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));

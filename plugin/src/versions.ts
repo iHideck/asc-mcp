@@ -149,3 +149,24 @@ export function notEditableError({ status }: Version): Error {
     `版 ${status.versionString} は、いま ${status.state} なので変えられません。変えられるのは、提出の準備中か、却下されたあとの版です。審査中の版は、審査から外すと変えられるようになります。`,
   );
 }
+
+export function pickEditableVersion(
+  versions: Version[],
+  versionString: string | undefined,
+): Version {
+  const version =
+    versionString === undefined
+      ? versions.find(isEditable)
+      : versions.find(({ status }) => status.versionString === versionString);
+  if (version === undefined) {
+    throw new Error(
+      versionString === undefined
+        ? '編集できる版（提出の準備中か、却下されたあとの版）がありません。ensure_version で、次に出す版を用意してください。'
+        : `版 ${versionString} はありません。ensure_version で、次に出す版を用意してください。`,
+    );
+  }
+  if (!isEditable(version)) {
+    throw notEditableError(version);
+  }
+  return version;
+}
