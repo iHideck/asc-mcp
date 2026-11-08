@@ -40,4 +40,4 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 
 テストは、送るリクエストのパス・引数・値が、OpenAPI の仕様にあるかを確かめる。CI は毎回、Apple がいま配っている仕様を落として照らす。
 
-手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。`ASC_READ_ONLY=1` も入れると、書くツールは App Store Connect を変えず、送るはずだったリクエストをエラーで返す。
+手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。このとき、書くツールは App Store Connect を変えず、送るはずだったリクエストをエラーで返す。本当に書いて試すときは、`ASC_READ_ONLY=0` も入れる。

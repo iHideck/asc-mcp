@@ -177,8 +177,13 @@ function formatViolations(format: string | undefined, value: string, at: string)
   return [];
 }
 
+// $ref の横の nullable などは、参照先の値より優先する
 function resolve(schema: Schema): Schema {
-  return schema.$ref === undefined ? schema : resolve(specAt(schema.$ref.slice(1)) as Schema);
+  if (schema.$ref === undefined) {
+    return schema;
+  }
+  const { $ref, ...beside } = schema;
+  return { ...resolve(specAt($ref.slice(1)) as Schema), ...beside };
 }
 
 function matches(template: string, pathname: string): boolean {

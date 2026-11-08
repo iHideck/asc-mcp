@@ -67,6 +67,18 @@ describe('specViolations', () => {
     ]);
   });
 
+  it('$ref の横に書いた nullable も読む', () => {
+    expect(
+      specViolations('post', api('/v1/appStoreVersionPhasedReleases'), {
+        data: {
+          type: 'appStoreVersionPhasedReleases',
+          attributes: { phasedReleaseState: null },
+          relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: 'v1' } } },
+        },
+      }),
+    ).toEqual([]);
+  });
+
   it('本文を受け取らない操作への本文と、本文が要る操作の欠けた本文を挙げる', () => {
     expect(specViolations('delete', api('/v1/appStoreVersions/v1'), {})).toEqual([
       'DELETE /v1/appStoreVersions/{id} は、本文を受け取りません',

@@ -22,11 +22,13 @@ const APP_ID = '6826307654';
 const BUNDLE_ID = 'com.ihideck.machosterone';
 const VERSIONS = `/v1/apps/${APP_ID}/appStoreVersions`;
 const DRAFT_CREATED = '2026-11-08T10:00:00-08:00';
+const NOW = Date.parse('2026-11-08T12:00:00Z');
 
 type VersionFields = {
   releaseType?: string;
   earliestReleaseDate?: string;
   phasedRelease?: string;
+  build?: string;
 };
 
 function version(
@@ -34,7 +36,7 @@ function version(
   versionString: string,
   appVersionState: string,
   createdDate: string,
-  { releaseType = 'AFTER_APPROVAL', earliestReleaseDate, phasedRelease }: VersionFields = {},
+  { releaseType = 'AFTER_APPROVAL', earliestReleaseDate, phasedRelease, build }: VersionFields = {},
 ) {
   return resource(
     'appStoreVersions',
@@ -47,7 +49,7 @@ function version(
       createdDate,
     },
     {
-      build: null,
+      build: build === undefined ? null : `builds:${build}`,
       appStoreVersionPhasedRelease:
         phasedRelease === undefined ? null : `appStoreVersionPhasedReleases:${phasedRelease}`,
     },
@@ -83,7 +85,12 @@ function ensure(fetchFn: typeof fetch, request: Partial<EnsureVersionRequest> = 
       versionString: '1.0.2',
       ...request,
     },
+    () => NOW,
   );
+}
+
+function routesOf(fetchFn: ReturnType<typeof fakeFetch>): string[] {
+  return sentWrites(fetchFn).map(({ method, path }) => `${method} ${path}`);
 }
 
 describe('ensureVersion', () => {
@@ -324,6 +331,177 @@ describe('ensureVersion', () => {
       /送りませんでした: POST \/v1\/appStoreVersions .*"versionString":"1\.0\.2"/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('公開したことのある番号を頼むと、大きい番号を使うよう返し、編集中の版も変えない', async () => {
+    const editing = version('v103', '1.0.3', 'PREPARE_FOR_SUBMISSION', DRAFT_CREATED);
+    const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([editing, live]) });
+
+    await expect(ensure(fetchFn, { versionString: '1.0.1' })).rejects.toThrow(
+      '版 1.0.1 は、公開したことのある番号です（READY_FOR_DISTRIBUTION）。次に出す版は、1.0.1 より大きい番号にしてください。',
+    );
+    expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('審査中の版があれば、新しい版は作らず、どの版が待っているかを返す', async () => {
+    const waiting = version('v102', '1.0.2', 'WAITING_FOR_REVIEW', DRAFT_CREATED);
+    const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([waiting, live]) });
+
+    await expect(ensure(fetchFn, { versionString: '1.0.3' })).rejects.toThrow(
+      /版 1\.0\.2 が、いま WAITING_FOR_REVIEW なので、新しい版はまだ作れません/,
+    );
+    expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('審査中の版には、段階的リリースも付けない', async () => {
+    const waiting = version('v102', '1.0.2', 'WAITING_FOR_REVIEW', DRAFT_CREATED);
+    const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([waiting, live]) });
+
+    await expect(ensure(fetchFn, { phasedRelease: true })).rejects.toThrow(/審査から外すと/);
+    expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('番号を変えた版にビルドが選んであれば、選び直すよう知らせる', async () => {
+    const old = version('v10', '1.0', 'METADATA_REJECTED', DRAFT_CREATED, { build: 'b5' });
+    const renamed = version('v10', '1.0.2', 'METADATA_REJECTED', DRAFT_CREATED, { build: 'b5' });
+    const built = () => ({
+      included: [resource('builds', 'b5', { version: '5', uploadedDate: DRAFT_CREATED })],
+    });
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [page([old, live], built()), page([renamed, live], built())],
+      'PATCH /v1/appStoreVersions/v10': jsonResponse(200, { data: renamed }),
+    });
+
+    const result = await ensure(fetchFn);
+
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/選んであるビルド 5 は、前の番号のときのビルドです[\s\S]*select_build/),
+    ]);
+  });
+
+  it('作った版は読み直してから、その版の id で、段階的リリースを付ける', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([live]),
+        page([draft(), live]),
+        page([draft({ phasedRelease: 'p102' }), live], { included: [phased('p102')] }),
+      ],
+      'POST /v1/appStoreVersions': created('appStoreVersions', 'v102'),
+      'POST /v1/appStoreVersionPhasedReleases': created('appStoreVersionPhasedReleases', 'p102'),
+    });
+
+    const result = await ensure(fetchFn, { phasedRelease: true });
+
+    expect(routesOf(fetchFn)).toEqual([
+      'POST /v1/appStoreVersions',
+      'POST /v1/appStoreVersionPhasedReleases',
+    ]);
+    expect(sentWrites(fetchFn)[1]?.body).toMatchObject({
+      data: { relationships: { appStoreVersion: { data: { id: 'v102' } } } },
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('作った版に段階的リリースが写っていれば、頼まれたとおりに外す', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([live]),
+        page([draft({ phasedRelease: 'p102' }), live], { included: [phased('p102')] }),
+        page([draft(), live]),
+      ],
+      'POST /v1/appStoreVersions': created('appStoreVersions', 'v102'),
+      'DELETE /v1/appStoreVersionPhasedReleases/p102': noContent(),
+    });
+
+    await ensure(fetchFn, { phasedRelease: false });
+
+    expect(routesOf(fetchFn)).toEqual([
+      'POST /v1/appStoreVersions',
+      'DELETE /v1/appStoreVersionPhasedReleases/p102',
+    ]);
+  });
+
+  it('途中で失敗したら、済んだ書き込みを添えて返し、やり直すと残りだけを送る', async () => {
+    const failing = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [page([live]), page([draft(), live])],
+      'POST /v1/appStoreVersions': created('appStoreVersions', 'v102'),
+      'POST /v1/appStoreVersionPhasedReleases': jsonResponse(500, {
+        errors: [{ status: '500', code: 'UNEXPECTED_ERROR' }],
+      }),
+    });
+    const retrying = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([draft(), live]),
+        page([draft({ phasedRelease: 'p102' }), live], { included: [phased('p102')] }),
+      ],
+      'POST /v1/appStoreVersionPhasedReleases': created('appStoreVersionPhasedReleases', 'p102'),
+    });
+
+    await expect(ensure(failing, { phasedRelease: true })).rejects.toThrow(
+      /^版 1\.0\.2 を作りました。段階的リリースを付けるところで止まりました。同じ呼び出しをやり直すと、残りだけを行います。\n[\s\S]*500/,
+    );
+    await ensure(retrying, { phasedRelease: true });
+
+    expect(routesOf(retrying)).toEqual(['POST /v1/appStoreVersionPhasedReleases']);
+  });
+
+  it('頼んだ値と違う値が入っていたら、知らせる', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [page([draft(), live]), page([draft(), live])],
+      'PATCH /v1/appStoreVersions/v102': jsonResponse(200, { data: draft() }),
+    });
+
+    const result = await ensure(fetchFn, { releaseType: 'MANUAL' });
+
+    expect(result.warnings).toEqual([
+      'App Store Connect の値が、頼んだものと違います: 公開のしかたが AFTER_APPROVAL です（頼んだのは MANUAL）',
+    ]);
+  });
+
+  it('置き換わった版しか無いアプリも、公開したことのあるアプリとして、段階的リリースを付ける', async () => {
+    const replaced = version(
+      'v100',
+      '1.0.0',
+      'REPLACED_WITH_NEW_VERSION',
+      '2026-10-01T10:00:00-07:00',
+    );
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([draft(), replaced]),
+        page([draft({ phasedRelease: 'p102' }), replaced], { included: [phased('p102')] }),
+      ],
+      'POST /v1/appStoreVersionPhasedReleases': created('appStoreVersionPhasedReleases', 'p102'),
+    });
+
+    const result = await ensure(fetchFn, { phasedRelease: true });
+
+    expect(result.skipped).toEqual([]);
+    expect(routesOf(fetchFn)).toEqual(['POST /v1/appStoreVersionPhasedReleases']);
+  });
+
+  it('公開する日時は、正時で、いまより先のものだけ受け付ける', async () => {
+    const fetchFn = fakeFetch({});
+
+    await expect(
+      ensure(fetchFn, {
+        releaseType: 'SCHEDULED',
+        earliestReleaseDate: '2026-12-01T10:30:00+09:00',
+      }),
+    ).rejects.toThrow(/正時/);
+    await expect(
+      ensure(fetchFn, {
+        releaseType: 'SCHEDULED',
+        earliestReleaseDate: '2026-11-01T10:00:00+09:00',
+      }),
+    ).rejects.toThrow(/もう過ぎています/);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('状態と公開のしかたの名前が、Apple の仕様にある', () => {

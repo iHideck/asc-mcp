@@ -112,6 +112,11 @@ const WRITE_UNKNOWN_HINT =
 const AGREEMENT_HINT =
   'Account Holder が App Store Connect か Apple Developer のサイトにサインインし、新しい契約に同意してください。API キーを作り直しても直りません。';
 
+// 書かない設定は、値が無いか 0 のときだけ外す。打ち間違い（true など）で、本番に書いてしまわないため
+export function isReadOnly(value: string | undefined): boolean {
+  return value !== undefined && value !== '' && value !== '0';
+}
+
 export function createClient(
   token: () => string,
   fetchFn: typeof fetch = fetch,
@@ -149,7 +154,11 @@ export function createClient(
     }
     const parsed: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
-      throw new AscApiError(response.status, describeError(response.status, parsed));
+      const message = describeError(response.status, parsed);
+      throw new AscApiError(
+        response.status,
+        method !== 'GET' && response.status >= 500 ? `${message}\n${WRITE_UNKNOWN_HINT}` : message,
+      );
     }
     return parsed;
   }
@@ -194,7 +203,13 @@ export function createClient(
           ),
         },
       };
-      return parse(Created, await call('POST', new URL(path, ORIGIN), body), path).data.id;
+      const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
+      if (!created.success) {
+        throw new Error(
+          `App Store Connect API の ${path} の応答から、作ったものの ID を読めませんでした。${WRITE_UNKNOWN_HINT}`,
+        );
+      }
+      return created.data.data.id;
     },
     async update(type, id, attributes) {
       await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), { data: { type, id, attributes } });

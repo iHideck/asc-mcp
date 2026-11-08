@@ -4,7 +4,7 @@ import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { listApps } from './apps.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
-import { createClient, type AscClient } from './client.ts';
+import { createClient, isReadOnly, type AscClient } from './client.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
@@ -17,7 +17,7 @@ async function getClient(): Promise<AscClient> {
   client ??= createClient(
     createTokenSource(await loadCredentials(process.env)),
     fetch,
-    process.env.ASC_READ_ONLY === '1',
+    isReadOnly(process.env.ASC_READ_ONLY),
   );
   return client;
 }
@@ -87,7 +87,7 @@ server.registerTool(
   {
     title: '版を用意する',
     description:
-      '次に出す版を用意する。その番号の版が無ければ作る。編集できる版（提出の準備中・却下のあと）が別の番号なら、その版の番号を変える。公開のしかたと段階的リリースは、渡したものだけをそろえる。審査中・公開中の版は変えない。変える前と後の版を返す。',
+      '次に出す版を用意する。その番号の版が無ければ作る。編集できる版（提出の準備中・却下のあと）が別の番号なら、その版の番号を変える。公開のしかたと段階的リリースは、渡したものだけをそろえる。審査中の版は変えず、公開したことのある番号は使わない。変える前と後の版と、気を付けること（warnings）を返す。',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -105,7 +105,9 @@ server.registerTool(
       earliestReleaseDate: z.iso
         .datetime({ offset: true })
         .optional()
-        .describe('SCHEDULED のときの、公開する日時（例: 2026-12-01T10:00:00+09:00）'),
+        .describe(
+          'SCHEDULED のときの、公開する日時。正時で、いまより先にする（例: 2026-12-01T10:00:00+09:00）',
+        ),
       phasedRelease: z
         .boolean()
         .optional()
@@ -115,7 +117,7 @@ server.registerTool(
     }),
     annotations: {
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: true,
       openWorldHint: true,
     },

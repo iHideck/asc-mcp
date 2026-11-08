@@ -63,7 +63,12 @@ export type VersionStatus = {
   } | null;
 };
 
-export type Version = { id: string; phasedReleaseId: string | null; status: VersionStatus };
+export type Version = {
+  id: string;
+  buildId: string | null;
+  phasedReleaseId: string | null;
+  status: VersionStatus;
+};
 
 export async function listVersions(
   client: AscClient,
@@ -89,6 +94,7 @@ export async function listVersions(
       );
       return {
         id,
+        buildId: relationships.build?.data?.id ?? null,
         phasedReleaseId: relationships.appStoreVersionPhasedRelease?.data?.id ?? null,
         status: {
           versionString: attributes.versionString,
@@ -130,6 +136,16 @@ export function isEditable(version: Version): boolean {
   return EDITABLE_VERSION_STATES.includes(version.status.state);
 }
 
+export function isDistributed(version: Version): boolean {
+  return DISTRIBUTED_VERSION_STATES.includes(version.status.state);
+}
+
 export function isFirstRelease(versions: Version[]): boolean {
-  return !versions.some(({ status }) => DISTRIBUTED_VERSION_STATES.includes(status.state));
+  return !versions.some(isDistributed);
+}
+
+export function notEditableError({ status }: Version): Error {
+  return new Error(
+    `版 ${status.versionString} は、いま ${status.state} なので変えられません。変えられるのは、提出の準備中か、却下されたあとの版です。審査中の版は、審査から外すと変えられるようになります。`,
+  );
 }

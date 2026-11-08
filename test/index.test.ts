@@ -76,7 +76,11 @@ describe('MCP サーバー', () => {
       }),
       expect.objectContaining({
         name: 'ensure_version',
-        annotations: expect.objectContaining({ readOnlyHint: false, idempotentHint: true }),
+        annotations: expect.objectContaining({
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        }),
         inputSchema: expect.objectContaining({ required: ['bundleId', 'versionString'] }),
       }),
     ]);
