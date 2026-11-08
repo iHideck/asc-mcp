@@ -14,6 +14,12 @@ import { getReleaseStatus } from './release-status.ts';
 import { PHASED_RELEASE_ACTIONS, releaseVersion, setPhasedRelease } from './release.ts';
 import { copyReviewContact, setReviewDetail } from './review-detail.ts';
 import { cancelReview, submitForReview } from './review-submission.ts';
+import {
+  DISPLAY_TYPE_NAMES,
+  DISPLAY_TYPES,
+  MAX_SCREENSHOTS,
+  replaceScreenshots,
+} from './screenshots.ts';
 import { selectBuild } from './select-build.ts';
 import { localizationInput, setLocalizations } from './set-localizations.ts';
 import { PLATFORMS } from './versions.ts';
@@ -187,6 +193,43 @@ server.registerTool(
     },
   },
   async (request) => json(await setLocalizations(await getClient(), request)),
+);
+
+server.registerTool(
+  'replace_screenshots',
+  {
+    title: '画面写真を入れ替える',
+    description:
+      'iOS の編集できる版（提出の準備中・却下のあと）の、1つの言語の1つの欄（displayType）の画面写真を、渡したファイルに入れ替え、渡した順に並べる。送る前に、全部のファイルが PNG か JPEG かと、写真の大きさがその欄のものかを確かめ、1つでも合わなければ何も変えない。同じ写真（MD5 が同じもの）は上げ直さず、要らない写真は消す。上げたあと、Apple が写真を処理し終えるまで、2分まで待つ。入れ替える前と後の写真の一覧と、上げた写真・消した写真の名前を返す。',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('写真を入れ替える版（例: 1.1.0）。省くと、編集できる版'),
+      locale: z.string().min(1).describe('写真を入れ替える言語（例: ja）'),
+      displayType: z.enum(DISPLAY_TYPE_NAMES).describe(
+        `入れ替える欄。Apple の Screenshot specifications の区分と、受け付ける写真の大きさ: ${Object.entries(
+          DISPLAY_TYPES,
+        )
+          .map(([name, { label, sizes }]) => `${name}（${label}）${sizes.join('・')}`)
+          .join('。')}`,
+      ),
+      files: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(MAX_SCREENSHOTS)
+        .describe('欄に入れる写真（PNG か JPEG）のファイルの絶対パス。並べたい順に渡す'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await replaceScreenshots(await getClient(), request)),
 );
 
 server.registerTool(

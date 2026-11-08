@@ -17,7 +17,15 @@ type Params = Record<string, string>;
 type Fetched<D, I> = { data: D[]; included: I[] };
 type Schemas<D, I> = { data: z.ZodType<D>; included?: z.ZodType<I> };
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
-export type Attributes = Record<string, string | boolean | null>;
+export type Attributes = Record<string, string | number | boolean | null>;
+
+export type UploadOperation = {
+  method: string;
+  url: string;
+  offset: number;
+  length: number;
+  requestHeaders: { name: string; value: string }[];
+};
 
 export type AscClient = {
   getPage<D, I = never>(
@@ -37,14 +45,26 @@ export type AscClient = {
     relationships: Record<string, Identifier | Identifier[]>,
     included?: object[],
   ): Promise<string>;
+  createResource<D>(
+    type: string,
+    attributes: Attributes,
+    relationships: Record<string, Identifier | Identifier[]>,
+    schema: z.ZodType<D>,
+  ): Promise<D>;
   update(
     type: string,
     id: string,
     attributes: Attributes,
     relationships?: Record<string, Identifier>,
   ): Promise<void>;
-  setRelationship(type: string, id: string, name: string, target: Identifier): Promise<void>;
+  setRelationship(
+    type: string,
+    id: string,
+    name: string,
+    target: Identifier | Identifier[],
+  ): Promise<void>;
   remove(type: string, id: string): Promise<void>;
+  upload(operation: UploadOperation, file: Uint8Array<ArrayBuffer>): Promise<void>;
 };
 
 const Page = z.object({
@@ -55,7 +75,6 @@ const Page = z.object({
 
 const Identifier = z.object({ type: z.string(), id: z.string() });
 type Identifier = z.infer<typeof Identifier>;
-const Created = z.object({ data: Identifier });
 export const toOne = z.object({ data: Identifier.nullish() }).optional();
 export const toMany = z.object({ data: z.array(Identifier).optional() }).optional();
 
@@ -197,6 +216,30 @@ export function createClient(
     return fetched;
   }
 
+  async function post<D>(
+    type: string,
+    attributes: Attributes,
+    relationships: Record<string, Identifier | Identifier[]>,
+    schema: z.ZodType<D>,
+    included?: object[],
+  ): Promise<D> {
+    // 配信する国（appAvailabilities）は、v2 の API にしか無い
+    const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
+    const body = {
+      data: { type, ...resourceBody(attributes, relationships) },
+      ...(included === undefined ? {} : { included }),
+    };
+    const created = z
+      .object({ data: schema })
+      .safeParse(await call('POST', new URL(path, ORIGIN), body));
+    if (!created.success) {
+      throw new Error(
+        `App Store Connect API の ${path} の応答から、作ったものを読めませんでした。${WRITE_UNKNOWN_HINT}`,
+      );
+    }
+    return created.data.data;
+  }
+
   return {
     getPage: (path, params, schemas) => read(path, params, schemas, false),
     getAll: (path, params, schemas) => read(path, params, schemas, true),
@@ -208,20 +251,10 @@ export function createClient(
       ).data;
     },
     async create(type, attributes, relationships, included) {
-      // 配信する国（appAvailabilities）は、v2 の API にしか無い
-      const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
-      const body = {
-        data: { type, ...resourceBody(attributes, relationships) },
-        ...(included === undefined ? {} : { included }),
-      };
-      const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
-      if (!created.success) {
-        throw new Error(
-          `App Store Connect API の ${path} の応答から、作ったものの ID を読めませんでした。${WRITE_UNKNOWN_HINT}`,
-        );
-      }
-      return created.data.data.id;
+      return (await post(type, attributes, relationships, Identifier, included)).id;
     },
+    createResource: (type, attributes, relationships, schema) =>
+      post(type, attributes, relationships, schema),
     async update(type, id, attributes, relationships = {}) {
       await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), {
         data: { type, id, ...resourceBody(attributes, relationships) },
@@ -234,6 +267,32 @@ export function createClient(
     },
     async remove(type, id) {
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
+    },
+    // 送り先は Apple が応答で渡す、API の外の URL。API のトークンは送らない
+    async upload({ method, url, offset, length, requestHeaders }, file) {
+      const target = new URL(url);
+      const where = `${method} ${target.origin}${target.pathname}`;
+      if (readOnly) {
+        throw new Error(
+          `書かない設定で動いているので、次のリクエストを送りませんでした: ${where}（${length} バイト）`,
+        );
+      }
+      let response: Response;
+      try {
+        response = await fetchFn(target, {
+          method,
+          headers: Object.fromEntries(requestHeaders.map(({ name, value }) => [name, value])),
+          body: file.subarray(offset, offset + length),
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+      } catch (error) {
+        throw new Error(`${where} に接続できませんでした（${reasonOf(error)}）。`, {
+          cause: error,
+        });
+      }
+      if (!response.ok) {
+        throw new Error(`${where} が ${response.status} を返しました。`);
+      }
     },
   };
 }

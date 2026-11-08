@@ -102,6 +102,17 @@ describe('MCP サーバー', () => {
         inputSchema: expect.objectContaining({ required: ['bundleId', 'localizations'] }),
       }),
       expect.objectContaining({
+        name: 'replace_screenshots',
+        annotations: expect.objectContaining({
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        }),
+        inputSchema: expect.objectContaining({
+          required: ['bundleId', 'locale', 'displayType', 'files'],
+        }),
+      }),
+      expect.objectContaining({
         name: 'set_review_detail',
         annotations: expect.objectContaining({
           readOnlyHint: false,
@@ -156,6 +167,7 @@ describe('MCP サーバー', () => {
       'ensure_version',
       'select_build',
       'set_localizations',
+      'replace_screenshots',
       'set_review_detail',
       'copy_review_contact',
       'set_app_info',
@@ -164,7 +176,7 @@ describe('MCP サーバー', () => {
       (listed.result?.tools as { name: string; _meta?: unknown }[])
         .filter(({ name }) => writing.includes(name))
         .map(({ _meta }) => _meta),
-    ).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
+    ).toEqual(writing.map(() => undefined));
 
     const called = await server.request('tools/call', { name: 'list_apps', arguments: {} });
     expect(called.result).toMatchObject({
