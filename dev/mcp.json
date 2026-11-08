@@ -5,7 +5,8 @@
       "args": ["plugin/src/index.ts"],
       "env": {
         "ASC_ISSUER_ID": "${ASC_ISSUER_ID}",
-        "ASC_KEY_ID": "${ASC_KEY_ID}"
+        "ASC_KEY_ID": "${ASC_KEY_ID}",
+        "ASC_READ_ONLY": "${ASC_READ_ONLY:-}"
       }
     }
   }

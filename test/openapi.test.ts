@@ -29,4 +29,50 @@ describe('specViolations', () => {
       '引数 limit は 200 までです',
     ]);
   });
+
+  it('仕様どおりの本文は通す', () => {
+    expect(
+      specViolations('patch', api('/v1/appStoreVersions/v1'), {
+        data: {
+          type: 'appStoreVersions',
+          id: 'v1',
+          attributes: { releaseType: 'MANUAL', earliestReleaseDate: null },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it('本文の、仕様に無い名前と値・欠けた項目・使えない null・使わなくなった項目を挙げる', () => {
+    expect(
+      specViolations('post', api('/v1/appStoreVersions'), {
+        data: {
+          type: 'appStoreVersions',
+          attributes: {
+            platform: 'IOS',
+            versionString: null,
+            releaseTyp: 'MANUAL',
+            earliestReleaseDate: 'tomorrow',
+            usesIdfa: false,
+          },
+          relationships: { app: { data: { type: 'app' } } },
+        },
+      }),
+    ).toEqual([
+      '本文.data.attributes.versionString に null は使えません',
+      '本文.data.attributes.releaseTyp は、仕様にありません',
+      '本文.data.attributes.earliestReleaseDate は日時です',
+      '本文.data.attributes.usesIdfa は、仕様で使わないことになっています',
+      '本文.data.relationships.app.data.id が要ります',
+      '本文.data.relationships.app.data.type に "app" は使えません',
+    ]);
+  });
+
+  it('本文を受け取らない操作への本文と、本文が要る操作の欠けた本文を挙げる', () => {
+    expect(specViolations('delete', api('/v1/appStoreVersions/v1'), {})).toEqual([
+      'DELETE /v1/appStoreVersions/{id} は、本文を受け取りません',
+    ]);
+    expect(specViolations('patch', api('/v1/appStoreVersions/v1'))).toEqual([
+      'PATCH /v1/appStoreVersions/{id} には、本文が要ります',
+    ]);
+  });
 });

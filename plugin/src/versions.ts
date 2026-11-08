@@ -6,6 +6,20 @@ export type Platform = (typeof PLATFORMS)[number];
 
 export const REPLACED_VERSION_STATE = 'REPLACED_WITH_NEW_VERSION';
 
+export const EDITABLE_VERSION_STATES: readonly string[] = [
+  'PREPARE_FOR_SUBMISSION',
+  'DEVELOPER_REJECTED',
+  'REJECTED',
+  'METADATA_REJECTED',
+  'INVALID_BINARY',
+];
+
+export const DISTRIBUTED_VERSION_STATES: readonly string[] = [
+  'PROCESSING_FOR_DISTRIBUTION',
+  'READY_FOR_DISTRIBUTION',
+  REPLACED_VERSION_STATE,
+];
+
 const AppStoreVersion = z.object({
   type: z.literal('appStoreVersions'),
   id: z.string(),
@@ -49,7 +63,7 @@ export type VersionStatus = {
   } | null;
 };
 
-export type Version = { id: string; status: VersionStatus };
+export type Version = { id: string; phasedReleaseId: string | null; status: VersionStatus };
 
 export async function listVersions(
   client: AscClient,
@@ -75,6 +89,7 @@ export async function listVersions(
       );
       return {
         id,
+        phasedReleaseId: relationships.appStoreVersionPhasedRelease?.data?.id ?? null,
         status: {
           versionString: attributes.versionString,
           state: attributes.appVersionState,
@@ -109,4 +124,12 @@ function createdTime({ status }: Version): number {
 
 export function isCurrent(version: Version): boolean {
   return version.status.state !== REPLACED_VERSION_STATE;
+}
+
+export function isEditable(version: Version): boolean {
+  return EDITABLE_VERSION_STATES.includes(version.status.state);
+}
+
+export function isFirstRelease(versions: Version[]): boolean {
+  return !versions.some(({ status }) => DISTRIBUTED_VERSION_STATES.includes(status.state));
 }

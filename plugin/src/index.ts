@@ -5,6 +5,7 @@ import packageJson from '../package.json' with { type: 'json' };
 import { listApps } from './apps.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
 import { createClient, type AscClient } from './client.ts';
+import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { PLATFORMS } from './versions.ts';
@@ -13,7 +14,11 @@ let client: AscClient | undefined;
 
 // 鍵は、ツールが初めて呼ばれたときに読む。鍵のファイルを置く前でもサーバーは起動し、ツールが置き場所を返す
 async function getClient(): Promise<AscClient> {
-  client ??= createClient(createTokenSource(await loadCredentials(process.env)));
+  client ??= createClient(
+    createTokenSource(await loadCredentials(process.env)),
+    fetch,
+    process.env.ASC_READ_ONLY === '1',
+  );
   return client;
 }
 
@@ -75,6 +80,47 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async (request) => json(await getLocalizations(await getClient(), request)),
+);
+
+server.registerTool(
+  'ensure_version',
+  {
+    title: '版を用意する',
+    description:
+      '次に出す版を用意する。その番号の版が無ければ作る。編集できる版（提出の準備中・却下のあと）が別の番号なら、その版の番号を変える。公開のしかたと段階的リリースは、渡したものだけをそろえる。審査中・公開中の版は変えない。変える前と後の版を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .describe(
+          '版の番号（例: 1.0.2）。上げるビルドの版（CFBundleShortVersionString）と同じにする',
+        ),
+      releaseType: z
+        .enum(RELEASE_TYPES)
+        .optional()
+        .describe(
+          '公開のしかた。MANUAL は審査のあと手動で、AFTER_APPROVAL は審査が通ったらすぐ、SCHEDULED は earliestReleaseDate の日時から公開する。省くと変えない',
+        ),
+      earliestReleaseDate: z.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe('SCHEDULED のときの、公開する日時（例: 2026-12-01T10:00:00+09:00）'),
+      phasedRelease: z
+        .boolean()
+        .optional()
+        .describe(
+          '段階的リリース（7日かけて、自動で更新する利用者に少しずつ出す）を使うか。省くと変えない',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await ensureVersion(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
