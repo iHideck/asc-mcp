@@ -91,7 +91,7 @@ export const DISPLAY_TYPE_NAMES = Object.keys(DISPLAY_TYPES) as [DisplayType, ..
 export const MAX_SCREENSHOTS = 10;
 
 const POLL_INTERVAL_MS = 5_000;
-const POLL_ROUNDS = 24;
+export const POLL_ROUNDS = 24;
 
 const ScreenshotSet = z.object({
   type: z.literal('appScreenshotSets'),
@@ -138,6 +138,8 @@ const ReservedScreenshot = z.object({
   }),
 });
 
+type Wait = (ms: number) => Promise<unknown>;
+
 type ScreenshotFile = { fileName: string; bytes: Buffer<ArrayBuffer>; checksum: string };
 
 export type ReplaceScreenshotsRequest = {
@@ -165,7 +167,7 @@ export type ReplaceScreenshotsResult = {
 export async function replaceScreenshots(
   client: AscClient,
   request: ReplaceScreenshotsRequest,
-  wait: (ms: number) => Promise<unknown> = sleep,
+  wait: Wait = sleep,
 ): Promise<ReplaceScreenshotsResult> {
   const { locale, displayType } = request;
   const files = await readScreenshotFiles(request.files, displayType);
@@ -177,8 +179,35 @@ export async function replaceScreenshots(
   const { versionString } = version.status;
   const localizationId = await findLocalization(client, version.id, versionString, locale);
   const existingSetId = await findScreenshotSet(client, localizationId, displayType);
-  const before = existingSetId === undefined ? [] : await readScreenshots(client, existingSetId);
+  const before =
+    existingSetId === undefined ? [] : await readSettledScreenshots(client, existingSetId, wait);
   const { slots, remove } = planReplacement(before, files);
+  const missing = slots.flatMap(({ file, existing }) => (existing === undefined ? [file] : []));
+  const uploadedIds = new Map<ScreenshotFile, string>();
+  const result = (
+    current: ScreenshotResource[],
+    removed: ScreenshotResource[],
+    pending: string[] = [],
+  ): ReplaceScreenshotsResult => ({
+    app,
+    versionString,
+    locale,
+    displayType,
+    uploaded: [...uploadedIds.keys()].map(({ fileName }) => fileName),
+    removed: removed.map(nameOf),
+    before: before.map(summarize),
+    after: current.map(summarize),
+    warnings:
+      pending.length === 0
+        ? []
+        : [
+            `Apple が、まだ写真（${pending.join('、')}）を処理しているので、ここで止めました。数分たってから同じ呼び出しをやり直すと、続きを行います。`,
+          ],
+  });
+  const kept = slots.flatMap(({ existing }) => existing?.id ?? []);
+  if (missing.length === 0 && remove.length === 0 && sameOrder(before, kept)) {
+    return result(before, []);
+  }
   const where = `版 ${versionString} の ${locale} の ${displayType} の欄`;
   const progress = trackProgress();
   const setId =
@@ -192,55 +221,58 @@ export async function replaceScreenshots(
         },
       ),
     ));
+  const upload = async (targets: ScreenshotFile[]) => {
+    for (const file of targets) {
+      uploadedIds.set(
+        file,
+        await progress.write(
+          `写真 ${file.fileName} を上げる`,
+          `写真 ${file.fileName} を上げました`,
+          () => uploadScreenshot(client, setId, file),
+        ),
+      );
+    }
+  };
+  const settle = () =>
+    progress.read('Apple が写真を処理し終えるのを待つ', () =>
+      waitForUploads(client, setId, new Set(uploadedIds.values()), wait),
+    );
+  // 欄に入る分を先に上げ、Apple が受け付けたのを確かめてから、要らない写真を消す
+  const room = Math.max(0, MAX_SCREENSHOTS - before.length);
+  await upload(missing.slice(0, room));
+  if (uploadedIds.size > 0 && remove.length > 0) {
+    const { screenshots, pending } = await settle();
+    if (pending.length > 0) {
+      return result(screenshots, [], pending);
+    }
+  }
   for (const screenshot of remove) {
     const name = nameOf(screenshot);
     await progress.write(`写真 ${name} を消す`, `写真 ${name} を消しました`, () =>
       client.remove('appScreenshots', screenshot.id),
     );
   }
-  const order: string[] = [];
-  for (const { file, existing } of slots) {
-    order.push(
-      existing?.id ??
-        (await progress.write(
-          `写真 ${file.fileName} を上げる`,
-          `写真 ${file.fileName} を上げました`,
-          () => uploadScreenshot(client, setId, file),
-        )),
-    );
+  await upload(missing.slice(room));
+  const { screenshots, pending } = await settle();
+  if (pending.length > 0) {
+    return result(screenshots, remove, pending);
   }
-  if (!sameOrder(before, order)) {
-    await progress.write(`${where}の写真を、渡した順に並べる`, `${where}の写真を並べました`, () =>
-      client.setRelationship(
-        'appScreenshotSets',
-        setId,
-        'appScreenshots',
-        order.map((id) => ({ type: 'appScreenshots', id })),
-      ),
-    );
+  const order = slots.flatMap(({ file, existing }) => existing?.id ?? uploadedIds.get(file) ?? []);
+  if (sameOrder(screenshots, order)) {
+    return result(screenshots, remove);
   }
-  const after = await progress.read('Apple が写真を処理し終えるのを待つ', () =>
-    waitForProcessing(client, setId, wait),
+  await progress.write(`${where}の写真を、渡した順に並べる`, `${where}の写真を並べました`, () =>
+    client.setRelationship(
+      'appScreenshotSets',
+      setId,
+      'appScreenshots',
+      order.map((id) => ({ type: 'appScreenshots', id })),
+    ),
   );
-  const processing = after.filter(isProcessing).map(nameOf);
-  return {
-    app,
-    versionString,
-    locale,
-    displayType,
-    uploaded: slots
-      .filter(({ existing }) => existing === undefined)
-      .map(({ file }) => file.fileName),
-    removed: remove.map(nameOf),
-    before: before.map(summarize),
-    after: after.map(summarize),
-    warnings:
-      processing.length === 0
-        ? []
-        : [
-            `Apple が、まだ写真（${processing.join('、')}）を処理しています。数分たってから同じ呼び出しをやり直すと、処理が終わったかを確かめます。`,
-          ],
-  };
+  return result(
+    await progress.read('並べたあとの写真を読む', () => readScreenshots(client, setId)),
+    remove,
+  );
 }
 
 async function readScreenshotFiles(
@@ -359,11 +391,27 @@ async function readScreenshots(client: AscClient, setId: string): Promise<Screen
   return data;
 }
 
-// 処理中（UPLOAD_COMPLETE）の写真も残す。やり直したときに、上げ直さないため。上げかけと、処理に失敗した写真は消して上げ直す
+// 前の呼び出しで上げた写真の処理が終わるのを待ってから比べる。待たないと、同じ写真を見分けられず、消して上げ直してしまう
+async function readSettledScreenshots(
+  client: AscClient,
+  setId: string,
+  wait: Wait,
+): Promise<ScreenshotResource[]> {
+  const screenshots = await pollScreenshots(client, setId, wait, isProcessing);
+  const processing = screenshots
+    .filter((screenshot) => stateOf(screenshot) === 'UPLOAD_COMPLETE')
+    .map(nameOf);
+  if (processing.length > 0) {
+    throw new Error(
+      `Apple が、まだ写真（${processing.join('、')}）を処理しているので、何も変えていません。数分たってから、同じ呼び出しをやり直してください。`,
+    );
+  }
+  return screenshots;
+}
+
+// 処理が済んだ写真だけを残す。上げかけと、処理に失敗した写真は、消して上げ直す
 function planReplacement(current: ScreenshotResource[], files: ScreenshotFile[]) {
-  const reusable = current.filter(({ attributes }) =>
-    ['COMPLETE', 'UPLOAD_COMPLETE'].includes(attributes.assetDeliveryState?.state ?? ''),
-  );
+  const reusable = current.filter((screenshot) => stateOf(screenshot) === 'COMPLETE');
   const slots = files.map((file) => {
     const index = reusable.findIndex(
       ({ attributes }) => attributes.sourceFileChecksum === file.checksum,
@@ -395,34 +443,54 @@ async function uploadScreenshot(
   return reserved.id;
 }
 
-async function waitForProcessing(
+async function pollScreenshots(
   client: AscClient,
   setId: string,
-  wait: (ms: number) => Promise<unknown>,
+  wait: Wait,
+  isWaitingFor: (screenshot: ScreenshotResource) => boolean,
 ): Promise<ScreenshotResource[]> {
   for (let round = 1; ; round += 1) {
     const screenshots = await readScreenshots(client, setId);
-    const failed = screenshots.filter(
-      ({ attributes }) => attributes.assetDeliveryState?.state === 'FAILED',
-    );
-    if (failed.length > 0) {
-      throw new Error(
-        [
-          'Apple が、次の写真を受け付けませんでした。写真を直してから、同じ呼び出しをやり直してください。',
-          ...failed.map(describeFailure),
-        ].join('\n'),
-      );
-    }
-    if (!screenshots.some(isProcessing) || round === POLL_ROUNDS) {
+    if (!screenshots.some(isWaitingFor) || round === POLL_ROUNDS) {
       return screenshots;
     }
     await wait(POLL_INTERVAL_MS);
   }
 }
 
-function isProcessing({ attributes }: ScreenshotResource): boolean {
-  return ['AWAITING_UPLOAD', 'UPLOAD_COMPLETE'].includes(
-    attributes.assetDeliveryState?.state ?? '',
+async function waitForUploads(
+  client: AscClient,
+  setId: string,
+  uploaded: ReadonlySet<string>,
+  wait: Wait,
+): Promise<{ screenshots: ScreenshotResource[]; pending: string[] }> {
+  const isSettling = (screenshot: ScreenshotResource) =>
+    uploaded.has(screenshot.id) &&
+    (stateOf(screenshot) === 'AWAITING_UPLOAD' || isProcessing(screenshot));
+  const screenshots = await pollScreenshots(client, setId, wait, isSettling);
+  const failed = screenshots.filter(
+    (screenshot) => uploaded.has(screenshot.id) && stateOf(screenshot) === 'FAILED',
+  );
+  if (failed.length > 0) {
+    throw new Error(
+      [
+        'Apple が、次の写真を受け付けませんでした。写真を直してから、同じ呼び出しをやり直してください。',
+        ...failed.map(describeFailure),
+      ].join('\n'),
+    );
+  }
+  return { screenshots, pending: screenshots.filter(isSettling).map(nameOf) };
+}
+
+function stateOf({ attributes }: ScreenshotResource): string | undefined {
+  return attributes.assetDeliveryState?.state;
+}
+
+// Apple は、処理が終わって（COMPLETE）から少したつまで、sourceFileChecksum を返さない
+function isProcessing(screenshot: ScreenshotResource): boolean {
+  return (
+    stateOf(screenshot) === 'UPLOAD_COMPLETE' ||
+    (stateOf(screenshot) === 'COMPLETE' && screenshot.attributes.sourceFileChecksum === null)
   );
 }
 

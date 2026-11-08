@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createClient } from '../plugin/src/client.ts';
 import {
   DISPLAY_TYPE_NAMES,
+  POLL_ROUNDS,
   replaceScreenshots,
   type ReplaceScreenshotsRequest,
 } from '../plugin/src/screenshots.ts';
@@ -37,7 +38,10 @@ const pictures = {
   detail: { name: '4_detail.jpg', bytes: jpeg(1206, 2622) },
   large: { name: 'large.png', bytes: png(1320, 2868, 'large') },
   ipad: { name: 'ipad.jpg', bytes: jpeg(2064, 2752) },
+  progressive: { name: 'progressive.jpg', bytes: jpeg(1668, 2224, 0xc2) },
   text: { name: 'notes.txt', bytes: Buffer.from('画面写真ではない') },
+  shortPng: { name: 'short.png', bytes: png(1206, 2622, 'short').subarray(0, 20) },
+  shortJpeg: { name: 'short.jpg', bytes: jpeg(1206, 2622).subarray(0, 18) },
 };
 type Picture = keyof typeof pictures;
 
@@ -61,8 +65,8 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, Buffer.from(type, 'ascii'), data, Buffer.alloc(4)]);
 }
 
-// 大きさの区切り（SOF0）の前に、大きさを持たない区切り（APP0 とハフマンの表）を置く
-function jpeg(width: number, height: number): Buffer {
+// 大きさの区切り（SOF）の前に、大きさを持たない区切り（APP0 とハフマンの表）を置く
+function jpeg(width: number, height: number, frame = 0xc0): Buffer {
   const size = Buffer.alloc(4);
   size.writeUInt16BE(height, 0);
   size.writeUInt16BE(width, 2);
@@ -70,7 +74,7 @@ function jpeg(width: number, height: number): Buffer {
     Buffer.from([
       0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc4, 0x00, 0x04, 0x00, 0x00,
     ]),
-    Buffer.from([0xff, 0xc0, 0x00, 0x0b, 0x08]),
+    Buffer.from([0xff, frame, 0x00, 0x0b, 0x08]),
     size,
     Buffer.from([0x01, 0x01, 0x11, 0x00, 0xff, 0xd9]),
   ]);
@@ -110,11 +114,12 @@ function version(state = 'PREPARE_FOR_SUBMISSION') {
   );
 }
 
+// Apple は、処理が済んでからでないと、MD5（sourceFileChecksum）を返さない
 function screenshot(
   id: string,
   picture: Picture,
   state = 'COMPLETE',
-  checksum: string | null = md5(picture),
+  checksum: string | null = state === 'COMPLETE' ? md5(picture) : null,
 ) {
   return resource('appScreenshots', id, {
     fileName: pictures[picture].name,
@@ -138,6 +143,33 @@ function failed(id: string, picture: Picture) {
       warnings: [],
     },
   });
+}
+
+function oldScreenshots(count: number) {
+  return Array.from({ length: count }, (_, index) =>
+    screenshot(`old${index}`, 'question', 'COMPLETE', `checksum-of-old-${index}`),
+  );
+}
+
+function oldDeleteRoutes(count: number) {
+  return Object.fromEntries(
+    Array.from({ length: count }, (_, index) => [
+      `DELETE /v1/appScreenshots/old${index}`,
+      noContent(),
+    ]),
+  );
+}
+
+function oldDeletes(count: number) {
+  return Array.from({ length: count }, (_, index) => deleted(`old${index}`));
+}
+
+function deleted(id: string) {
+  return { method: 'DELETE', path: `/v1/appScreenshots/${id}`, body: undefined };
+}
+
+function repeat(count: number, make: () => Response): Response[] {
+  return Array.from({ length: count }, make);
 }
 
 // Apple は、写真の枠を作ると、ファイルを分けて送る先を返す
@@ -225,20 +257,24 @@ function order(...ids: string[]) {
   };
 }
 
-function uploadWrites(id: string, picture: Picture) {
+function reservation(picture: Picture) {
   const { name, bytes } = pictures[picture];
-  return [
-    {
-      method: 'POST',
-      path: '/v1/appScreenshots',
-      body: {
-        data: {
-          type: 'appScreenshots',
-          attributes: { fileName: name, fileSize: bytes.length },
-          relationships: { appScreenshotSet: { data: { type: 'appScreenshotSets', id: 'set1' } } },
-        },
+  return {
+    method: 'POST',
+    path: '/v1/appScreenshots',
+    body: {
+      data: {
+        type: 'appScreenshots',
+        attributes: { fileName: name, fileSize: bytes.length },
+        relationships: { appScreenshotSet: { data: { type: 'appScreenshotSets', id: 'set1' } } },
       },
     },
+  };
+}
+
+function uploadWrites(id: string, picture: Picture) {
+  return [
+    reservation(picture),
     { method: 'PUT', path: `/${id}/part1`, body: undefined },
     { method: 'PUT', path: `/${id}/part2`, body: undefined },
     {
@@ -265,12 +301,22 @@ async function failureOf(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('replaceScreenshots', () => {
-  it('同じ写真は残し、要らない写真を消し、足りない写真だけを上げて、渡した順に並べる', async () => {
+  it('足りない写真を先に上げ、Apple が受け付けてから要らない写真を消して、渡した順に並べる', async () => {
     const fetchFn = fakeFetch(
       routes({
         [SCREENSHOTS]: [
           page([screenshot('s1', 'question'), screenshot('s2', 'report')]),
-          page([screenshot('s1', 'question'), screenshot('new1', 'summary', 'UPLOAD_COMPLETE')]),
+          page([
+            screenshot('s1', 'question'),
+            screenshot('s2', 'report'),
+            screenshot('new1', 'summary', 'UPLOAD_COMPLETE'),
+          ]),
+          page([
+            screenshot('s1', 'question'),
+            screenshot('s2', 'report'),
+            screenshot('new1', 'summary'),
+          ]),
+          page([screenshot('s1', 'question'), screenshot('new1', 'summary')]),
           page([screenshot('new1', 'summary'), screenshot('s1', 'question')]),
         ],
         'DELETE /v1/appScreenshots/s2': noContent(),
@@ -284,8 +330,8 @@ describe('replaceScreenshots', () => {
     const result = await replace(fetchFn, request('summary', 'question'), { wait });
 
     expect(sentWrites(fetchFn)).toEqual([
-      { method: 'DELETE', path: '/v1/appScreenshots/s2', body: undefined },
       ...uploadWrites('new1', 'summary'),
+      deleted('s2'),
       order('new1', 's1'),
     ]);
     expect(result).toMatchObject({
@@ -311,7 +357,6 @@ describe('replaceScreenshots', () => {
         [SCREENSHOTS]: [page([]), page([screenshot('new1', 'summary')])],
         'POST /v1/appScreenshots': reserved('new1', 'summary'),
         ...uploadRoutes('new1', 'summary'),
-        [ORDER]: noContent(),
       }),
     );
 
@@ -331,28 +376,63 @@ describe('replaceScreenshots', () => {
     }
   });
 
+  it('送り先への送信が失敗したら、上げ終えたと伝えず、やり直しの案内を返す', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: page([]),
+        'POST /v1/appScreenshots': reserved('new1', 'summary'),
+        [`PUT ${UPLOAD}/new1/part1`]: new Response(null, { status: 503 }),
+      }),
+    );
+
+    const message = await failureOf(replace(fetchFn, request('summary')));
+
+    expect(message).toContain('503');
+    expect(message).toContain('やり直すと');
+    expect(sentWrites(fetchFn)).toEqual([
+      reservation('summary'),
+      { method: 'PUT', path: '/new1/part1', body: undefined },
+    ]);
+  });
+
   it('名前が同じでも、中身が違う写真は上げ直す', async () => {
     const fetchFn = fakeFetch(
       routes({
         [SCREENSHOTS]: [
           page([screenshot('s1', 'question', 'COMPLETE', 'checksum-of-the-old-picture')]),
+          page([
+            screenshot('s1', 'question', 'COMPLETE', 'checksum-of-the-old-picture'),
+            screenshot('new1', 'question'),
+          ]),
           page([screenshot('new1', 'question')]),
         ],
         'DELETE /v1/appScreenshots/s1': noContent(),
         'POST /v1/appScreenshots': reserved('new1', 'question'),
         ...uploadRoutes('new1', 'question'),
-        [ORDER]: noContent(),
       }),
     );
 
     const result = await replace(fetchFn, request('question'));
 
-    expect(sentWrites(fetchFn)).toEqual([
-      { method: 'DELETE', path: '/v1/appScreenshots/s1', body: undefined },
-      ...uploadWrites('new1', 'question'),
-      order('new1'),
-    ]);
+    expect(sentWrites(fetchFn)).toEqual([...uploadWrites('new1', 'question'), deleted('s1')]);
     expect(result).toMatchObject({ uploaded: ['1_question.png'], removed: ['1_question.png'] });
+  });
+
+  it('同じ中身の写真を2枚渡すと、2枚とも入れる', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([screenshot('s1', 'question')]),
+          page([screenshot('s1', 'question'), screenshot('new1', 'question')]),
+        ],
+        'POST /v1/appScreenshots': reserved('new1', 'question'),
+        ...uploadRoutes('new1', 'question'),
+      }),
+    );
+
+    await replace(fetchFn, request('question', 'question'));
+
+    expect(sentWrites(fetchFn)).toEqual(uploadWrites('new1', 'question'));
   });
 
   it('同じ言語のほかの欄（iPad など）は、変えない', async () => {
@@ -363,6 +443,7 @@ describe('replaceScreenshots', () => {
           resource('appScreenshotSets', 'set1', { screenshotDisplayType: 'APP_IPHONE_61' }),
         ]),
         [SCREENSHOTS]: [
+          page([screenshot('s1', 'question'), screenshot('s2', 'report')]),
           page([screenshot('s1', 'question'), screenshot('s2', 'report')]),
           page([screenshot('s2', 'report'), screenshot('s1', 'question')]),
         ],
@@ -376,8 +457,9 @@ describe('replaceScreenshots', () => {
   });
 
   it('渡した写真と並びが欄と同じなら、何も送らない', async () => {
-    const shots = () => page([screenshot('s1', 'question'), screenshot('s2', 'report')]);
-    const fetchFn = fakeFetch(routes({ [SCREENSHOTS]: [shots(), shots()] }));
+    const fetchFn = fakeFetch(
+      routes({ [SCREENSHOTS]: page([screenshot('s1', 'question'), screenshot('s2', 'report')]) }),
+    );
 
     const result = await replace(fetchFn, request('question', 'report'));
 
@@ -390,15 +472,20 @@ describe('replaceScreenshots', () => {
       routes({
         [SCREENSHOTS]: [
           page([screenshot('s1', 'question'), screenshot('s2', 'report')]),
+          page([screenshot('s1', 'question'), screenshot('s2', 'report')]),
           page([screenshot('s2', 'report'), screenshot('s1', 'question')]),
         ],
         [ORDER]: noContent(),
       }),
     );
 
-    await replace(fetchFn, request('report', 'question'));
+    const result = await replace(fetchFn, request('report', 'question'));
 
     expect(sentWrites(fetchFn)).toEqual([order('s2', 's1')]);
+    expect(result.after.map(({ fileName }) => fileName)).toEqual([
+      '2_report.png',
+      '1_question.png',
+    ]);
   });
 
   it('欄がまだ無ければ、作ってから上げる。JPEG も大きさを読む', async () => {
@@ -408,7 +495,6 @@ describe('replaceScreenshots', () => {
         'POST /v1/appScreenshotSets': created('appScreenshotSets', 'set1'),
         'POST /v1/appScreenshots': reserved('new1', 'detail'),
         ...uploadRoutes('new1', 'detail'),
-        [ORDER]: noContent(),
         [SCREENSHOTS]: page([screenshot('new1', 'detail')]),
       }),
     );
@@ -432,45 +518,218 @@ describe('replaceScreenshots', () => {
         },
       },
       ...uploadWrites('new1', 'detail'),
-      order('new1'),
     ]);
     expect(result).toMatchObject({ before: [], uploaded: ['4_detail.jpg'] });
   });
 
-  it('やり直したとき、処理中の写真は残し、上げかけの写真と処理に失敗した写真は消して上げ直す', async () => {
+  it('欄に空きが足りなければ、入る分だけ先に上げ、残りは消してから上げる', async () => {
     const fetchFn = fakeFetch(
       routes({
         [SCREENSHOTS]: [
-          page([
-            screenshot('s1', 'question', 'UPLOAD_COMPLETE'),
-            screenshot('stale', 'report', 'AWAITING_UPLOAD', null),
-            failed('broken', 'report'),
-          ]),
+          page(oldScreenshots(9)),
+          page([...oldScreenshots(9), screenshot('new1', 'summary')]),
+          page([screenshot('new1', 'summary'), screenshot('new2', 'report')]),
+        ],
+        ...oldDeleteRoutes(9),
+        'POST /v1/appScreenshots': [reserved('new1', 'summary'), reserved('new2', 'report')],
+        ...uploadRoutes('new1', 'summary'),
+        ...uploadRoutes('new2', 'report'),
+      }),
+    );
+
+    await replace(fetchFn, request('summary', 'report'));
+
+    expect(sentWrites(fetchFn)).toEqual([
+      ...uploadWrites('new1', 'summary'),
+      ...oldDeletes(9),
+      ...uploadWrites('new2', 'report'),
+    ]);
+  });
+
+  it('欄が埋まっていれば先に消す。処理が終わらなければ、並べ替えずに止めて知らせる', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page(oldScreenshots(10)),
+          ...repeat(POLL_ROUNDS, () =>
+            page([
+              screenshot('new1', 'report', 'UPLOAD_COMPLETE'),
+              screenshot('new2', 'summary', 'UPLOAD_COMPLETE'),
+            ]),
+          ),
+        ],
+        ...oldDeleteRoutes(10),
+        'POST /v1/appScreenshots': [reserved('new1', 'summary'), reserved('new2', 'report')],
+        ...uploadRoutes('new1', 'summary'),
+        ...uploadRoutes('new2', 'report'),
+      }),
+    );
+
+    const result = await replace(fetchFn, request('summary', 'report'));
+
+    expect(sentWrites(fetchFn)).toEqual([
+      ...oldDeletes(10),
+      ...uploadWrites('new1', 'summary'),
+      ...uploadWrites('new2', 'report'),
+    ]);
+    expect(result.removed).toHaveLength(10);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('まだ写真（2_report.png、3_summary.png）を処理しているので'),
+    ]);
+  });
+
+  it('上げかけの写真と、処理に失敗した前の写真は消す。前の写真の失敗では止めない', async () => {
+    const stale = screenshot('stale', 'report', 'AWAITING_UPLOAD');
+    const broken = failed('broken', 'report');
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([screenshot('s1', 'question'), stale, broken]),
+          page([screenshot('s1', 'question'), stale, broken, screenshot('new1', 'report')]),
           page([screenshot('s1', 'question'), screenshot('new1', 'report')]),
         ],
         'DELETE /v1/appScreenshots/stale': noContent(),
         'DELETE /v1/appScreenshots/broken': noContent(),
         'POST /v1/appScreenshots': reserved('new1', 'report'),
         ...uploadRoutes('new1', 'report'),
-        [ORDER]: noContent(),
       }),
     );
 
     await replace(fetchFn, request('question', 'report'));
 
     expect(sentWrites(fetchFn)).toEqual([
-      { method: 'DELETE', path: '/v1/appScreenshots/stale', body: undefined },
-      { method: 'DELETE', path: '/v1/appScreenshots/broken', body: undefined },
       ...uploadWrites('new1', 'report'),
-      order('s1', 'new1'),
+      deleted('stale'),
+      deleted('broken'),
     ]);
+  });
+
+  it('前の呼び出しで上げた写真は、処理が済んで MD5 が付くのを待ってから比べる', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([screenshot('s1', 'question', 'UPLOAD_COMPLETE')]),
+          page([screenshot('s1', 'question', 'COMPLETE', null)]),
+          page([screenshot('s1', 'question')]),
+        ],
+      }),
+    );
+    const wait = waiting();
+
+    const result = await replace(fetchFn, request('question'), { wait });
+
+    expect(sentWrites(fetchFn)).toEqual([]);
+    expect(result).toMatchObject({ uploaded: [], removed: [] });
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(wait.mock.calls.every(([ms]) => ms === 5000)).toBe(true);
+  });
+
+  it('前の写真の処理が終わらなければ、何も変えずに止める', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: repeat(POLL_ROUNDS, () =>
+          page([screenshot('s1', 'question', 'UPLOAD_COMPLETE')]),
+        ),
+      }),
+    );
+
+    const message = await failureOf(replace(fetchFn, request('summary')));
+
+    expect(message).toContain('まだ写真（1_question.png）を処理しているので、何も変えていません');
+    expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('処理が済んでも MD5 が付かないままの写真は、別の写真として入れ替える', async () => {
+    const unknown = screenshot('s1', 'question', 'COMPLETE', null);
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          ...repeat(POLL_ROUNDS, () => page([unknown])),
+          page([unknown, screenshot('new1', 'question')]),
+          page([screenshot('new1', 'question')]),
+        ],
+        'DELETE /v1/appScreenshots/s1': noContent(),
+        'POST /v1/appScreenshots': reserved('new1', 'question'),
+        ...uploadRoutes('new1', 'question'),
+      }),
+    );
+
+    await replace(fetchFn, request('question'));
+
+    expect(sentWrites(fetchFn)).toEqual([...uploadWrites('new1', 'question'), deleted('s1')]);
+  });
+
+  it('上げたあと、Apple が受け取って処理し終えるのを待つ', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([]),
+          page([screenshot('new1', 'summary', 'AWAITING_UPLOAD')]),
+          page([screenshot('new1', 'summary', 'COMPLETE', null)]),
+          page([screenshot('new1', 'summary')]),
+        ],
+        'POST /v1/appScreenshots': reserved('new1', 'summary'),
+        ...uploadRoutes('new1', 'summary'),
+      }),
+    );
+    const wait = waiting();
+
+    const result = await replace(fetchFn, request('summary'), { wait });
+
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(result.after).toEqual([
+      { fileName: '3_summary.png', size: '1206x2622', state: 'COMPLETE' },
+    ]);
+  });
+
+  it('Apple が写真を受け付けなければ、古い写真を消さずに、理由と終えたことを返す', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([screenshot('s1', 'question')]),
+          page([screenshot('s1', 'question'), failed('new1', 'summary')]),
+        ],
+        'POST /v1/appScreenshots': reserved('new1', 'summary'),
+        ...uploadRoutes('new1', 'summary'),
+      }),
+    );
+
+    const message = await failureOf(replace(fetchFn, request('summary')));
+
+    expect(message).toContain('写真 3_summary.png を上げました');
+    expect(message).toContain('3_summary.png: IMAGE_TOOL_FAILURE: 画像を処理できませんでした');
+    expect(sentWrites(fetchFn)).toEqual(uploadWrites('new1', 'summary'));
+  });
+
+  it('Apple の処理が終わらなければ、古い写真を消さずに止めて知らせる', async () => {
+    const fetchFn = fakeFetch(
+      routes({
+        [SCREENSHOTS]: [
+          page([screenshot('s1', 'question')]),
+          ...repeat(POLL_ROUNDS, () =>
+            page([screenshot('s1', 'question'), screenshot('new1', 'summary', 'UPLOAD_COMPLETE')]),
+          ),
+        ],
+        'POST /v1/appScreenshots': reserved('new1', 'summary'),
+        ...uploadRoutes('new1', 'summary'),
+      }),
+    );
+    const wait = waiting();
+
+    const result = await replace(fetchFn, request('summary'), { wait });
+
+    expect(sentWrites(fetchFn)).toEqual(uploadWrites('new1', 'summary'));
+    expect(result).toMatchObject({ uploaded: ['3_summary.png'], removed: [] });
+    expect(result.warnings).toEqual([
+      expect.stringContaining('まだ写真（3_summary.png）を処理しているので'),
+    ]);
+    expect(wait).toHaveBeenCalledTimes(POLL_ROUNDS - 1);
   });
 
   it('大きさが欄と合わない写真や、読めないファイルがあれば、何も送らずに止める', async () => {
     const fetchFn = fakeFetch({});
-
     const files = [
-      ...request('question', 'large', 'ipad', 'text').files,
+      ...request('question', 'large', 'ipad', 'progressive', 'text', 'shortPng', 'shortJpeg').files,
       join(dir, 'missing.png'),
       'shots/1_question.png',
     ];
@@ -485,55 +744,18 @@ describe('replaceScreenshots', () => {
     expect(message).toContain(
       `${pathOf('ipad')}: 2064x2752 は、この欄の大きさではありません（APP_IPAD_PRO_3GEN_129 の欄の大きさです）`,
     );
-    expect(message).toContain(`${pathOf('text')}: PNG か JPEG の写真として、大きさを読めません`);
+    expect(message).toContain(
+      `${pathOf('progressive')}: 1668x2224 は、この欄の大きさではありません（APP_IPAD_105 の欄の大きさです）`,
+    );
+    for (const unreadable of ['text', 'shortPng', 'shortJpeg'] as const) {
+      expect(message).toContain(
+        `${pathOf(unreadable)}: PNG か JPEG の写真として、大きさを読めません`,
+      );
+    }
     expect(message).toContain(`${join(dir, 'missing.png')}: ファイルがありません`);
     expect(message).toContain('shots/1_question.png: 絶対パスで渡してください');
-    expect(message).not.toContain(pathOf('question'));
+    expect(message).not.toContain(`${pathOf('question')}:`);
     expect(fetchFn).not.toHaveBeenCalled();
-  });
-
-  it('Apple が写真を受け付けなければ、理由と、終えたことを返す', async () => {
-    const fetchFn = fakeFetch(
-      routes({
-        [SCREENSHOTS]: [page([]), page([failed('new1', 'summary')])],
-        'POST /v1/appScreenshots': reserved('new1', 'summary'),
-        ...uploadRoutes('new1', 'summary'),
-        [ORDER]: noContent(),
-      }),
-    );
-
-    const message = await failureOf(replace(fetchFn, request('summary')));
-
-    expect(message).toContain('写真 3_summary.png を上げました');
-    expect(message).toContain('3_summary.png: IMAGE_TOOL_FAILURE: 画像を処理できませんでした');
-  });
-
-  it('Apple の処理が待つ間に終わらなければ、待つのをやめて知らせる', async () => {
-    const fetchFn = fakeFetch(
-      routes({
-        [SCREENSHOTS]: [
-          page([]),
-          ...Array.from({ length: 30 }, () =>
-            page([screenshot('new1', 'summary', 'UPLOAD_COMPLETE')]),
-          ),
-        ],
-        'POST /v1/appScreenshots': reserved('new1', 'summary'),
-        ...uploadRoutes('new1', 'summary'),
-        [ORDER]: noContent(),
-      }),
-    );
-    const wait = waiting();
-
-    const result = await replace(fetchFn, request('summary'), { wait });
-
-    expect(result.after).toEqual([
-      { fileName: '3_summary.png', size: null, state: 'UPLOAD_COMPLETE' },
-    ]);
-    expect(result.warnings).toEqual([
-      expect.stringContaining('まだ写真（3_summary.png）を処理しています'),
-    ]);
-    expect(wait).toHaveBeenCalled();
-    expect(wait.mock.calls.every(([ms]) => ms === 5000)).toBe(true);
   });
 
   it('版に無い言語を渡されたら、ある言語を返す', async () => {
@@ -563,7 +785,7 @@ describe('replaceScreenshots', () => {
 
     await expect(
       replace(fetchFn, request('summary', 'question'), { readOnly: true }),
-    ).rejects.toThrow('送りませんでした: DELETE /v1/appScreenshots/s2');
+    ).rejects.toThrow('送りませんでした: POST /v1/appScreenshots');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 

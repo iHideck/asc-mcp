@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const ORIGIN = 'https://api.appstoreconnect.apple.com';
 const TIMEOUT_MS = 30_000;
+// 写真のファイルは API の本文より大きい。回線が遅くても送り終えられるだけ待つ
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 export class AscApiError extends Error {
   override name = 'AscApiError';
@@ -135,8 +137,8 @@ const HINTS: Partial<Record<number, string>> = {
 };
 
 // 書くツールは、いまの状態を読んでから差だけを変えるので、やり直しても二重には変えない
-const WRITE_UNKNOWN_HINT =
-  '変更が App Store Connect に届いたかは分かりません。同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
+const RETRY_HINT = '同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
+const WRITE_UNKNOWN_HINT = `変更が App Store Connect に届いたかは分かりません。${RETRY_HINT}`;
 
 // Apple は、新しい契約に同意するまで、このコードの 403 を返す。ロールの不足とは直し方が違う
 const AGREEMENT_HINT =
@@ -283,15 +285,16 @@ export function createClient(
           method,
           headers: Object.fromEntries(requestHeaders.map(({ name, value }) => [name, value])),
           body: file.subarray(offset, offset + length),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
+          signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
         });
       } catch (error) {
-        throw new Error(`${where} に接続できませんでした（${reasonOf(error)}）。`, {
-          cause: error,
-        });
+        throw new Error(
+          `${where} に接続できませんでした（${reasonOf(error, UPLOAD_TIMEOUT_MS)}）。${RETRY_HINT}`,
+          { cause: error },
+        );
       }
       if (!response.ok) {
-        throw new Error(`${where} が ${response.status} を返しました。`);
+        throw new Error(`${where} が ${response.status} を返しました。${RETRY_HINT}`);
       }
     },
   };
@@ -350,12 +353,12 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, path: string): T {
   return result.data;
 }
 
-function reasonOf(error: unknown): string {
+function reasonOf(error: unknown, timeoutMs = TIMEOUT_MS): string {
   if (!(error instanceof Error)) {
     return String(error);
   }
   if (error.name === 'TimeoutError') {
-    return `${TIMEOUT_MS / 1000}秒たっても応答がありません`;
+    return `${timeoutMs / 1000}秒たっても応答がありません`;
   }
   // fetch は、DNS や TLS の失敗を cause に入れ、message は「fetch failed」だけにする
   return error.cause instanceof Error ? error.cause.message : error.message;
