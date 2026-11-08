@@ -101,6 +101,15 @@ describe('MCP サーバー', () => {
         }),
         inputSchema: expect.objectContaining({ required: ['bundleId', 'localizations'] }),
       }),
+      expect.objectContaining({
+        name: 'set_review_detail',
+        annotations: expect.objectContaining({
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        }),
+        inputSchema: expect.objectContaining({ required: ['bundleId'] }),
+      }),
     ]);
 
     const called = await server.request('tools/call', { name: 'list_apps', arguments: {} });

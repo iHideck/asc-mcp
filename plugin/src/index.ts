@@ -8,6 +8,7 @@ import { createClient, isReadOnly, type AscClient } from './client.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
+import { setReviewDetail } from './review-detail.ts';
 import { selectBuild } from './select-build.ts';
 import { localizationInput, setLocalizations } from './set-localizations.ts';
 import { PLATFORMS } from './versions.ts';
@@ -178,6 +179,43 @@ server.registerTool(
     },
   },
   async (request) => json(await setLocalizations(await getClient(), request)),
+);
+
+server.registerTool(
+  'set_review_detail',
+  {
+    title: '審査の情報を入れる',
+    description:
+      '編集できる版（提出の準備中・却下のあと）の、審査の情報（App Review Information）のうち、審査メモと、サインインが要るかを入れる。渡した項目だけを変える。連絡先と審査用のアカウントは入れず、欠けていれば warnings で知らせる。審査用のアカウントのパスワードは、読みも書きもしない。変える前と後を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('審査の情報を入れる版（例: 1.0.2）。省くと、編集できる版に入れる'),
+      notes: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          '審査メモ。Apple の文書では 4000 バイトまで。null か空の文字にすると消す。省くと変えない',
+        ),
+      demoAccountRequired: z
+        .boolean()
+        .optional()
+        .describe(
+          'アプリを使うのに、サインインが要るか。要るときは、審査用のアカウントを App Store Connect の画面で入れる。省くと変えない',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await setReviewDetail(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());

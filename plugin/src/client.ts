@@ -30,6 +30,7 @@ export type AscClient = {
     params: Params,
     schemas: Schemas<D, I>,
   ): Promise<Fetched<D, I>>;
+  getOne<D>(path: string, params: Params, schema: z.ZodType<D>): Promise<D | null>;
   create(
     type: string,
     attributes: Attributes,
@@ -171,10 +172,7 @@ export function createClient(
     allPages: boolean,
   ): Promise<Fetched<D, I>> {
     const fetched: Fetched<D, I> = { data: [], included: [] };
-    let next: URL | undefined = new URL(path, ORIGIN);
-    for (const [name, value] of Object.entries(params)) {
-      next.searchParams.set(name, value);
-    }
+    let next: URL | undefined = urlOf(path, params);
     while (next !== undefined) {
       const page: z.infer<typeof Page> = parse(Page, await call('GET', next), path);
       fetched.data.push(...parse(z.array(schemas.data), page.data, path));
@@ -193,6 +191,13 @@ export function createClient(
   return {
     getPage: (path, params, schemas) => read(path, params, schemas, false),
     getAll: (path, params, schemas) => read(path, params, schemas, true),
+    async getOne(path, params, schema) {
+      return parse(
+        z.object({ data: schema.nullable() }),
+        await call('GET', urlOf(path, params)),
+        path,
+      ).data;
+    },
     async create(type, attributes, relationships) {
       const path = `/v1/${type}`;
       const body = {
@@ -224,6 +229,14 @@ export function createClient(
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
     },
   };
+}
+
+function urlOf(path: string, params: Params): URL {
+  const url = new URL(path, ORIGIN);
+  for (const [name, value] of Object.entries(params)) {
+    url.searchParams.set(name, value);
+  }
+  return url;
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown, path: string): T {
