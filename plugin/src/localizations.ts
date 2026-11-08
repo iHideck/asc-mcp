@@ -43,9 +43,12 @@ export type LocalizationsRequest = {
   locales?: string[];
 };
 
+export type VersionLocalizationResource = z.infer<typeof VersionLocalization>;
+export type AppInfoLocalizationResource = z.infer<typeof AppInfoLocalization>;
+
 type AppInfoText = {
   state: string;
-  localizations: z.infer<typeof AppInfoLocalization>['attributes'][];
+  localizations: AppInfoLocalizationResource['attributes'][];
 };
 
 export type Localizations = {
@@ -62,14 +65,10 @@ export async function getLocalizations(
   const app = await findApp(client, bundleId);
   const version = pickVersion(await listVersions(client, app.appleId, platform), versionString);
   const [versionLocalizations, appInfos] = await Promise.all([
-    client.getAll(
-      `/v1/appStoreVersions/${version.id}/appStoreVersionLocalizations`,
-      { ...sparseFields(VersionLocalization), limit: '200' },
-      { data: VersionLocalization },
-    ),
+    readVersionLocalizations(client, version.id),
     currentAppInfos(client, app.appleId),
   ]);
-  const versionTexts = versionLocalizations.data.map(({ attributes }) => attributes);
+  const versionTexts = versionLocalizations.map(({ attributes }) => attributes);
   const known = new Set([
     ...versionTexts.map(({ locale }) => locale),
     ...appInfos.flatMap(({ localizations }) => localizations.map(({ locale }) => locale)),
@@ -115,24 +114,50 @@ function pickVersion(versions: Version[], versionString: string | undefined): Ve
 }
 
 async function currentAppInfos(client: AscClient, appleId: string): Promise<AppInfoText[]> {
+  return Promise.all(
+    (await listCurrentAppInfos(client, appleId)).map(async ({ id, state }) => ({
+      state,
+      localizations: (await readAppInfoLocalizations(client, id)).map(
+        ({ attributes }) => attributes,
+      ),
+    })),
+  );
+}
+
+export async function readVersionLocalizations(
+  client: AscClient,
+  versionId: string,
+): Promise<VersionLocalizationResource[]> {
+  const { data } = await client.getAll(
+    `/v1/appStoreVersions/${versionId}/appStoreVersionLocalizations`,
+    { ...sparseFields(VersionLocalization), limit: '200' },
+    { data: VersionLocalization },
+  );
+  return data;
+}
+
+export async function listCurrentAppInfos(
+  client: AscClient,
+  appleId: string,
+): Promise<{ id: string; state: string }[]> {
   const { data } = await client.getAll(
     `/v1/apps/${appleId}/appInfos`,
     { ...sparseFields(AppInfo), limit: '200' },
     { data: AppInfo },
   );
-  return Promise.all(
-    data
-      .filter(({ attributes }) => attributes.state !== REPLACED_APP_INFO_STATE)
-      .map(async ({ id, attributes }) => {
-        const localizations = await client.getAll(
-          `/v1/appInfos/${id}/appInfoLocalizations`,
-          { ...sparseFields(AppInfoLocalization), limit: '200' },
-          { data: AppInfoLocalization },
-        );
-        return {
-          state: attributes.state,
-          localizations: localizations.data.map(({ attributes }) => attributes),
-        };
-      }),
+  return data
+    .filter(({ attributes }) => attributes.state !== REPLACED_APP_INFO_STATE)
+    .map(({ id, attributes }) => ({ id, state: attributes.state }));
+}
+
+export async function readAppInfoLocalizations(
+  client: AscClient,
+  appInfoId: string,
+): Promise<AppInfoLocalizationResource[]> {
+  const { data } = await client.getAll(
+    `/v1/appInfos/${appInfoId}/appInfoLocalizations`,
+    { ...sparseFields(AppInfoLocalization), limit: '200' },
+    { data: AppInfoLocalization },
   );
+  return data;
 }
