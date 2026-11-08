@@ -4,10 +4,12 @@ import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
 import { ageRatingInput, CONTENT_RIGHTS, setAppInfo } from './app-info.ts';
 import { listApps } from './apps.ts';
+import { setAvailability } from './availability.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
 import { createClient, isReadOnly, type AscClient } from './client.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
+import { setFreePrice } from './price.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { PHASED_RELEASE_ACTIONS, releaseVersion, setPhasedRelease } from './release.ts';
 import { setReviewDetail } from './review-detail.ts';
@@ -262,6 +264,67 @@ server.registerTool(
     },
   },
   async (request) => json(await setAppInfo(await getClient(), request)),
+);
+
+const territoryId = z.string().regex(/^[A-Z]{3}$/, '国の ID は、JPN・USA のような 3 文字です');
+
+server.registerTool(
+  'set_price',
+  {
+    title: '価格を入れる',
+    description:
+      'アプリの価格を入れる。いまは無料だけ。基準の国の無料の価格の点で、価格の予定を作る。もう無料なら、そのまま返す。公開済みのアプリでは、審査なしで、すぐ利用者に届く。呼ぶたびに、利用者の確認が要る。入れる前と後の価格を返す。',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      price: z.literal('FREE').describe('価格。いまは FREE（無料）だけ'),
+      baseTerritory: territoryId.default('JPN').describe('基準の国の ID（例: JPN、USA）'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async ({ bundleId, baseTerritory }) =>
+    json(await setFreePrice(await getClient(), { bundleId, baseTerritory })),
+);
+
+server.registerTool(
+  'set_availability',
+  {
+    title: '配信する国を入れる',
+    description:
+      'アプリを配信する国を入れる。国の ID の一覧（territories）か、同じ国にするアプリのバンドル ID（sameAsApp）の、どちらか一方を渡す。渡した国だけで配信し、ほかの国では配信しない。配信の設定がまだ無ければ作り、あれば国ごとに変える。公開済みのアプリでは、審査なしで、すぐ利用者に届く。Mac と Apple Vision Pro での配信は API に無いので、変えない。呼ぶたびに、利用者の確認が要る。変える前と後の国を返す。',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      territories: z
+        .array(territoryId)
+        .min(1)
+        .optional()
+        .describe('配信する国の ID（例: ["JPN", "USA"]）'),
+      sameAsApp: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('配信する国を同じにするアプリのバンドル ID（例: com.ihideck.machosterone）'),
+      availableInNewTerritories: z
+        .boolean()
+        .optional()
+        .describe(
+          'App Store が新しい国を足したとき、自動で配信するか。配信の設定を初めて作るときだけ入れられる。省くと、sameAsApp のアプリと同じにする（territories のときは false）',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await setAvailability(await getClient(), request)),
 );
 
 server.registerTool(

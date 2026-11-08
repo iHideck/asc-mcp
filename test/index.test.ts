@@ -120,6 +120,16 @@ describe('MCP サーバー', () => {
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
       expect.objectContaining({
+        name: 'set_price',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+        inputSchema: expect.objectContaining({ required: ['bundleId', 'price'] }),
+      }),
+      expect.objectContaining({
+        name: 'set_availability',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+        inputSchema: expect.objectContaining({ required: ['bundleId'] }),
+      }),
+      expect.objectContaining({
         name: 'submit_for_review',
         _meta: { 'anthropic/requiresUserInteraction': true },
       }),
