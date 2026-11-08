@@ -36,7 +36,12 @@ export type AscClient = {
     attributes: Attributes,
     relationships: Record<string, Identifier>,
   ): Promise<string>;
-  update(type: string, id: string, attributes: Attributes): Promise<void>;
+  update(
+    type: string,
+    id: string,
+    attributes: Attributes,
+    relationships?: Record<string, Identifier>,
+  ): Promise<void>;
   setRelationship(type: string, id: string, name: string, target: Identifier): Promise<void>;
   remove(type: string, id: string): Promise<void>;
 };
@@ -203,16 +208,7 @@ export function createClient(
     },
     async create(type, attributes, relationships) {
       const path = `/v1/${type}`;
-      const body = {
-        data: {
-          type,
-          // 中身を指すだけの資源（審査への提出の中身など）は、仕様に attributes が無い
-          ...(Object.keys(attributes).length === 0 ? {} : { attributes }),
-          relationships: Object.fromEntries(
-            Object.entries(relationships).map(([name, target]) => [name, { data: target }]),
-          ),
-        },
-      };
+      const body = { data: { type, ...resourceBody(attributes, relationships) } };
       const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
       if (!created.success) {
         throw new Error(
@@ -221,8 +217,10 @@ export function createClient(
       }
       return created.data.data.id;
     },
-    async update(type, id, attributes) {
-      await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), { data: { type, id, attributes } });
+    async update(type, id, attributes, relationships = {}) {
+      await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), {
+        data: { type, id, ...resourceBody(attributes, relationships) },
+      });
     },
     async setRelationship(type, id, name, target) {
       await call('PATCH', new URL(`/v1/${type}/${id}/relationships/${name}`, ORIGIN), {
@@ -232,6 +230,20 @@ export function createClient(
     async remove(type, id) {
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
     },
+  };
+}
+
+// 仕様に attributes や relationships が無い本文（審査への提出の中身・App 情報の更新など）があるので、空なら送らない
+function resourceBody(attributes: Attributes, relationships: Record<string, Identifier>) {
+  return {
+    ...(Object.keys(attributes).length === 0 ? {} : { attributes }),
+    ...(Object.keys(relationships).length === 0
+      ? {}
+      : {
+          relationships: Object.fromEntries(
+            Object.entries(relationships).map(([name, target]) => [name, { data: target }]),
+          ),
+        }),
   };
 }
 

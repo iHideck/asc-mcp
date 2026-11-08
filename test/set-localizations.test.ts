@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '../plugin/src/client.ts';
-import { REPLACED_APP_INFO_STATE } from '../plugin/src/localizations.ts';
-import {
-  EDITABLE_APP_INFO_STATES,
-  setLocalizations,
-  type LocalizationInput,
-} from '../plugin/src/set-localizations.ts';
+import { EDITABLE_APP_INFO_STATES, REPLACED_APP_INFO_STATE } from '../plugin/src/localizations.ts';
+import { setLocalizations, type LocalizationInput } from '../plugin/src/set-localizations.ts';
 import { fakeFetch, jsonResponse, page, requestedUrls, resource, sentWrites } from './fake-api.ts';
 import { specAt } from './openapi.ts';
 

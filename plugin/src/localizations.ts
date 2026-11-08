@@ -5,6 +5,12 @@ import { isCurrent, listVersions, type Platform, type Version } from './versions
 
 export const REPLACED_APP_INFO_STATE = 'REPLACED_WITH_NEW_INFO';
 
+export const EDITABLE_APP_INFO_STATES: readonly string[] = [
+  'PREPARE_FOR_SUBMISSION',
+  'DEVELOPER_REJECTED',
+  'REJECTED',
+];
+
 const VersionLocalization = z.object({
   type: z.literal('appStoreVersionLocalizations'),
   id: z.string(),
@@ -148,6 +154,22 @@ export async function listCurrentAppInfos(
   return data
     .filter(({ attributes }) => attributes.state !== REPLACED_APP_INFO_STATE)
     .map(({ id, attributes }) => ({ id, state: attributes.state }));
+}
+
+// 名前・カテゴリ・年齢制限などは、編集できる App 情報（次の版のために作られるもの）にしか書けない
+export async function findEditableAppInfo(
+  client: AscClient,
+  appleId: string,
+  what: string,
+): Promise<{ id: string; state: string }> {
+  const appInfos = await listCurrentAppInfos(client, appleId);
+  const editable = appInfos.find(({ state }) => EDITABLE_APP_INFO_STATES.includes(state));
+  if (editable === undefined) {
+    throw new Error(
+      `App 情報（${what}）に、いま編集できるものがありません（App 情報の状態: ${appInfos.map(({ state }) => state).join('、')}）。何も変えていません。`,
+    );
+  }
+  return editable;
 }
 
 export async function readAppInfoLocalizations(

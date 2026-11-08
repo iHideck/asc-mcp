@@ -111,6 +111,15 @@ describe('MCP サーバー', () => {
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
       expect.objectContaining({
+        name: 'set_app_info',
+        annotations: expect.objectContaining({
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        }),
+        inputSchema: expect.objectContaining({ required: ['bundleId'] }),
+      }),
+      expect.objectContaining({
         name: 'submit_for_review',
         _meta: { 'anthropic/requiresUserInteraction': true },
       }),
@@ -128,12 +137,18 @@ describe('MCP サーバー', () => {
         inputSchema: expect.objectContaining({ required: ['bundleId', 'action'] }),
       }),
     ]);
-    const writing = ['ensure_version', 'select_build', 'set_localizations', 'set_review_detail'];
+    const writing = [
+      'ensure_version',
+      'select_build',
+      'set_localizations',
+      'set_review_detail',
+      'set_app_info',
+    ];
     expect(
       (listed.result?.tools as { name: string; _meta?: unknown }[])
         .filter(({ name }) => writing.includes(name))
         .map(({ _meta }) => _meta),
-    ).toEqual([undefined, undefined, undefined, undefined]);
+    ).toEqual([undefined, undefined, undefined, undefined, undefined]);
 
     const called = await server.request('tools/call', { name: 'list_apps', arguments: {} });
     expect(called.result).toMatchObject({
