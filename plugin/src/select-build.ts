@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { findApp, type AppSummary } from './apps.ts';
 import { findIncluded, sparseFields, toOne, type AscClient } from './client.ts';
+import { trackProgress } from './progress.ts';
 import {
   listVersions,
   pickEditableVersion,
@@ -70,29 +71,37 @@ export async function selectBuild(
   if (unusable !== undefined) {
     throw new Error(`ビルド ${request.buildNumber} は選べません。${unusable}`);
   }
+  const warnings = build.attributes.usesNonExemptEncryption === null ? [ENCRYPTION_WARNING] : [];
   const result = (
     before: VersionStatus['build'],
     after: VersionStatus['build'],
-  ): SelectedBuild => ({
-    app,
-    platform: request.platform,
-    versionString,
-    before,
-    after,
-    warnings: build.attributes.usesNonExemptEncryption === null ? [ENCRYPTION_WARNING] : [],
-  });
+  ): SelectedBuild => ({ app, platform: request.platform, versionString, before, after, warnings });
   if (version.buildId === build.id) {
     return result(version.status.build, version.status.build);
   }
-  await client.setRelationship('appStoreVersions', version.id, 'build', {
-    type: 'builds',
-    id: build.id,
-  });
-  const after = (await listVersions(client, app.appleId, request.platform)).find(
-    ({ id }) => id === version.id,
+  const progress = trackProgress();
+  await progress.write(
+    `版 ${versionString} にビルド ${request.buildNumber} を選ぶ`,
+    `版 ${versionString} にビルド ${request.buildNumber} を選びました`,
+    () =>
+      client.setRelationship('appStoreVersions', version.id, 'build', {
+        type: 'builds',
+        id: build.id,
+      }),
   );
-  if (after === undefined) {
-    throw new Error(`版 ${versionString} にビルドを選んだあと、読み直せませんでした。`);
+  const after = await progress.read('選んだ版を読み直す', async () => {
+    const found = (await listVersions(client, app.appleId, request.platform)).find(
+      ({ id }) => id === version.id,
+    );
+    if (found === undefined) {
+      throw new Error(`版 ${versionString} を、読み直せませんでした。`);
+    }
+    return found;
+  });
+  if (after.buildId !== build.id) {
+    warnings.push(
+      `App Store Connect の値が、頼んだものと違います: 選んであるビルドが ${after.status.build?.buildNumber ?? '無し'} です（頼んだのは ${request.buildNumber}）`,
+    );
   }
   return result(version.status.build, after.status.build);
 }

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '../plugin/src/client.ts';
 import { selectBuild, type SelectBuildRequest } from '../plugin/src/select-build.ts';
-import { fakeFetch, noContent, page, requestedUrls, resource, sentWrites } from './fake-api.ts';
+import {
+  fakeFetch,
+  jsonResponse,
+  noContent,
+  page,
+  requestedUrls,
+  resource,
+  sentWrites,
+} from './fake-api.ts';
 import { specAt } from './openapi.ts';
 
 const APP_ID = '6826307654';
@@ -225,6 +233,40 @@ describe('selectBuild', () => {
       /1\.0\.2 は、いま WAITING_FOR_REVIEW なので変えられません/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('選んだあとのビルドが、頼んだものと違えば知らせる', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([version('v102', '1.0.2', 'PREPARE_FOR_SUBMISSION', null), live]),
+        page([version('v102', '1.0.2', 'PREPARE_FOR_SUBMISSION', null), live]),
+      ],
+      '/v1/builds': page([build('b12', '12')], { included: preReleaseVersions }),
+      'PATCH /v1/appStoreVersions/v102/relationships/build': noContent(),
+    });
+
+    const result = await select(fetchFn);
+
+    expect(result.warnings).toEqual([
+      'App Store Connect の値が、頼んだものと違います: 選んであるビルドが 無し です（頼んだのは 12）',
+    ]);
+  });
+
+  it('選んだあと読み直せなければ、選んだことを添えて返す', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [
+        page([version('v102', '1.0.2', 'PREPARE_FOR_SUBMISSION', null), live]),
+        jsonResponse(500, { errors: [{ status: '500', code: 'UNEXPECTED_ERROR' }] }),
+      ],
+      '/v1/builds': page([build('b12', '12')], { included: preReleaseVersions }),
+      'PATCH /v1/appStoreVersions/v102/relationships/build': noContent(),
+    });
+
+    await expect(select(fetchFn)).rejects.toThrow(
+      /^版 1\.0\.2 にビルド 12 を選びました。選んだ版を読み直すところで止まりました。/,
+    );
   });
 
   it('ビルドの状態の名前が、Apple の仕様にある', () => {

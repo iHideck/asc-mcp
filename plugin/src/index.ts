@@ -131,7 +131,7 @@ server.registerTool(
   {
     title: 'ビルドを選ぶ',
     description:
-      '版に、審査に出すビルドを選ぶ。選べるのは、処理が済み（VALID）、期限が切れておらず、ビルドの版（CFBundleShortVersionString）が版の番号と同じビルド。版は、編集できるもの（提出の準備中・却下のあと）だけ。選ぶ前と後のビルドを返す。',
+      '版に、審査に出すビルドを選ぶ。選べるのは、処理が済み（VALID）、期限が切れておらず、ビルドの版（CFBundleShortVersionString）が版の番号と同じビルド。版は、編集できるもの（提出の準備中・却下のあと）だけ。選ぶ前と後のビルドと、気を付けること（warnings）を返す。',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -143,7 +143,7 @@ server.registerTool(
     }),
     annotations: {
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: true,
       openWorldHint: true,
     },
