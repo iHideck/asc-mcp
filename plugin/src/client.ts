@@ -87,17 +87,20 @@ export function findIncluded<I extends { type: string; id: string }, T extends I
   );
 }
 
+const ErrorDetail = z.object({
+  code: z.string().optional(),
+  title: z.string().optional(),
+  detail: z.string().optional(),
+  source: z.object({ pointer: z.string().optional(), parameter: z.string().optional() }).optional(),
+});
+
 const ErrorBody = z.object({
-  errors: z.array(
-    z.object({
-      code: z.string().optional(),
-      title: z.string().optional(),
-      detail: z.string().optional(),
-      source: z
-        .object({ pointer: z.string().optional(), parameter: z.string().optional() })
-        .optional(),
-    }),
-  ),
+  errors: z.array(ErrorDetail.extend({ meta: z.unknown().optional() })),
+});
+
+// 審査に出すときのエラーは、どの項目が足りないかを meta.associatedErrors に入れる
+const AssociatedErrors = z.object({
+  associatedErrors: z.record(z.string(), z.array(ErrorDetail)),
 });
 
 const HINTS: Partial<Record<number, string>> = {
@@ -203,7 +206,8 @@ export function createClient(
       const body = {
         data: {
           type,
-          attributes,
+          // 中身を指すだけの資源（審査への提出の中身など）は、仕様に attributes が無い
+          ...(Object.keys(attributes).length === 0 ? {} : { attributes }),
           relationships: Object.fromEntries(
             Object.entries(relationships).map(([name, target]) => [name, { data: target }]),
           ),
@@ -229,6 +233,12 @@ export function createClient(
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
     },
   };
+}
+
+function describeDetail(error: z.infer<typeof ErrorDetail>): string {
+  const where = error.source?.pointer ?? error.source?.parameter;
+  const text = [error.code, error.title, error.detail].filter(Boolean).join(': ');
+  return where === undefined ? text : `${text}（${where}）`;
 }
 
 function urlOf(path: string, params: Params): URL {
@@ -265,11 +275,12 @@ function describeError(status: number, body: unknown): string {
   const hint = errors.some((error) => error.code?.includes('REQUIRED_AGREEMENTS'))
     ? AGREEMENT_HINT
     : HINTS[status];
-  const details = errors.map((error) => {
-    const where = error.source?.pointer ?? error.source?.parameter;
-    const text = [error.code, error.title, error.detail].filter(Boolean).join(': ');
-    return where === undefined ? text : `${text}（${where}）`;
-  });
+  const details = errors.flatMap((error) => [
+    describeDetail(error),
+    ...Object.entries(AssociatedErrors.safeParse(error.meta).data?.associatedErrors ?? {}).flatMap(
+      ([path, associated]) => associated.map((item) => `- ${path}: ${describeDetail(item)}`),
+    ),
+  ]);
   return [`App Store Connect API が ${status} を返しました。`, hint, ...details]
     .filter((line) => line !== undefined)
     .join('\n');
