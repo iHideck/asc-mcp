@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { ageRatingInput, CONTENT_RIGHTS, setAppInfo } from './app-info.ts';
 import { listApps } from './apps.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
 import { createClient, isReadOnly, type AscClient } from './client.ts';
@@ -221,6 +222,46 @@ server.registerTool(
     },
   },
   async (request) => json(await setReviewDetail(await getClient(), request)),
+);
+
+const categoryId = (description: string) => z.string().min(1).optional().describe(description);
+
+server.registerTool(
+  'set_app_info',
+  {
+    title: 'App 情報を入れる',
+    description:
+      'App 情報のうち、カテゴリ・コンテンツ配信権・年齢制限の答えを入れる。カテゴリと年齢制限は、編集できる App 情報（提出の準備中・却下のあと）に入れる。渡した項目で、いまと違うものだけを変える。入れたあと、App Store が決めた年齢（appStoreAgeRating）を返す。何も渡さなければ、いまの値を返す。変える前と後と、気を付けること（warnings）を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      primaryCategory: categoryId('カテゴリの ID（例: GAMES、EDUCATION）'),
+      primarySubcategoryOne: categoryId(
+        'カテゴリのサブカテゴリの ID（例: GAMES_TRIVIA）。サブカテゴリがあるカテゴリ（ゲームなど）だけ',
+      ),
+      primarySubcategoryTwo: categoryId('カテゴリの2つ目のサブカテゴリの ID'),
+      secondaryCategory: categoryId('2つ目のカテゴリの ID'),
+      secondarySubcategoryOne: categoryId('2つ目のカテゴリのサブカテゴリの ID'),
+      secondarySubcategoryTwo: categoryId('2つ目のカテゴリの、2つ目のサブカテゴリの ID'),
+      contentRightsDeclaration: z
+        .enum(CONTENT_RIGHTS)
+        .optional()
+        .describe(
+          'ほかの人が作ったもの（文・画像・音など）を使うか。USES_THIRD_PARTY_CONTENT は、使う権利があることの申告になる',
+        ),
+      ageRating: ageRatingInput
+        .optional()
+        .describe(
+          '年齢制限の答え。真偽値の項目と、頻度（NONE・INFREQUENT_OR_MILD・FREQUENT_OR_INTENSE・INFREQUENT・FREQUENT）の項目がある。渡した項目だけを変える',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await setAppInfo(await getClient(), request)),
 );
 
 server.registerTool(

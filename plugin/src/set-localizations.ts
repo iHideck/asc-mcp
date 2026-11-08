@@ -2,18 +2,12 @@ import { z } from 'zod';
 import { findApp, type AppSummary } from './apps.ts';
 import type { AscClient, Attributes } from './client.ts';
 import {
-  listCurrentAppInfos,
+  findEditableAppInfo,
   readAppInfoLocalizations,
   readVersionLocalizations,
 } from './localizations.ts';
 import { trackProgress } from './progress.ts';
 import { isFirstRelease, listVersions, pickEditableVersion, type Platform } from './versions.ts';
-
-export const EDITABLE_APP_INFO_STATES: readonly string[] = [
-  'PREPARE_FOR_SUBMISSION',
-  'DEVELOPER_REJECTED',
-  'REJECTED',
-];
 
 const RESOURCES = ['appStoreVersionLocalizations', 'appInfoLocalizations'] as const;
 type Resource = (typeof RESOURCES)[number];
@@ -237,13 +231,11 @@ async function readSnapshot(
 }
 
 async function editableAppInfoLocalizations(client: AscClient, appleId: string) {
-  const appInfos = await listCurrentAppInfos(client, appleId);
-  const editable = appInfos.find(({ state }) => EDITABLE_APP_INFO_STATES.includes(state));
-  if (editable === undefined) {
-    throw new Error(
-      `App 情報（名前・サブタイトル・プライバシーポリシーの URL）に、いま編集できるものがありません（App 情報の状態: ${appInfos.map(({ state }) => state).join('、')}）。何も変えていません。`,
-    );
-  }
+  const editable = await findEditableAppInfo(
+    client,
+    appleId,
+    '名前・サブタイトル・プライバシーポリシーの URL',
+  );
   return readAppInfoLocalizations(client, editable.id);
 }
 
