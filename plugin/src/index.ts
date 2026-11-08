@@ -9,6 +9,7 @@ import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { setReviewDetail } from './review-detail.ts';
+import { cancelReview, submitForReview } from './review-submission.ts';
 import { selectBuild } from './select-build.ts';
 import { localizationInput, setLocalizations } from './set-localizations.ts';
 import { PLATFORMS } from './versions.ts';
@@ -33,6 +34,9 @@ const appArguments = {
   bundleId: z.string().min(1).describe('アプリのバンドル ID（例: com.ihideck.machosterone）'),
   platform: z.enum(PLATFORMS).default('IOS'),
 };
+
+// 外に出る操作は、Claude Code が呼ぶたびに、利用者の確認を求める（どの権限のモードでも、許可の決まりでも省けない）
+const NEEDS_APPROVAL = { 'anthropic/requiresUserInteraction': true };
 
 const server = new McpServer({ name: 'asc-mcp', version: packageJson.version });
 
@@ -216,6 +220,56 @@ server.registerTool(
     },
   },
   async (request) => json(await setReviewDetail(await getClient(), request)),
+);
+
+server.registerTool(
+  'submit_for_review',
+  {
+    title: '審査に出す',
+    description:
+      '版を審査に出す。出す前に、ビルドが選んであり、そのビルドの版が版の番号と同じで、処理が済み、輸出コンプライアンスの答えがあることを確かめる。作りかけの提出があれば、それを使う。もう審査に出してある版は、そのまま返す。呼ぶたびに、利用者の確認が要る。出す前と後の状態を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('審査に出す版（例: 1.0.2）。省くと、編集できる版を出す'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await submitForReview(await getClient(), request)),
+);
+
+server.registerTool(
+  'cancel_review',
+  {
+    title: '審査を取り下げる',
+    description:
+      '審査待ち・審査中の版を、審査から取り下げる。取り下げた版は、編集できるようになる。審査に出していない版は、そのまま返す。呼ぶたびに、利用者の確認が要る。取り下げる前と後の状態を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('取り下げる版（例: 1.0.2）。省くと、審査に出している版を取り下げる'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await cancelReview(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());

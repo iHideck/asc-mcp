@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { listApps } from '../plugin/src/apps.ts';
 import { createClient, isReadOnly } from '../plugin/src/client.ts';
-import { fakeFetch, jsonResponse } from './fake-api.ts';
+import { created, fakeFetch, jsonResponse, sentWrites } from './fake-api.ts';
 
 const VERSION = { type: 'appStoreVersions', id: 'v1' };
 
@@ -62,5 +62,54 @@ describe('createClient', () => {
         { appStoreVersion: VERSION },
       ),
     ).rejects.toThrow(/ID を読めませんでした[\s\S]*届いたかは分かりません/);
+  });
+  it('Apple のエラーの associatedErrors も、項目ごとに返す', async () => {
+    const fetchFn = fakeFetch({
+      'PATCH /v1/reviewSubmissions/s1': jsonResponse(409, {
+        errors: [
+          {
+            status: '409',
+            code: 'STATE_ERROR.ENTITY_STATE_INVALID',
+            title: 'The request cannot be fulfilled because of the state of another resource.',
+            meta: {
+              associatedErrors: {
+                '/v1/appStoreVersions/v102': [
+                  {
+                    code: 'ENTITY_ERROR.ATTRIBUTE.REQUIRED',
+                    detail: 'You must provide a value for the attribute whatsNew.',
+                    source: { pointer: '/data/attributes/whatsNew' },
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      createClient(() => 'TOKEN', fetchFn).update('reviewSubmissions', 's1', { submitted: true }),
+    ).rejects.toThrow(
+      '- /v1/appStoreVersions/v102: ENTITY_ERROR.ATTRIBUTE.REQUIRED: You must provide a value for the attribute whatsNew.（/data/attributes/whatsNew）',
+    );
+  });
+
+  it('作るものに属性が無ければ、attributes を送らない', async () => {
+    const fetchFn = fakeFetch({
+      'POST /v1/reviewSubmissionItems': created('reviewSubmissionItems', 'i1'),
+    });
+
+    await createClient(() => 'TOKEN', fetchFn).create(
+      'reviewSubmissionItems',
+      {},
+      { reviewSubmission: { type: 'reviewSubmissions', id: 's1' } },
+    );
+
+    expect(sentWrites(fetchFn)[0]?.body).toEqual({
+      data: {
+        type: 'reviewSubmissionItems',
+        relationships: { reviewSubmission: { data: { type: 'reviewSubmissions', id: 's1' } } },
+      },
+    });
   });
 });

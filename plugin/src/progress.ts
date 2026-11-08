@@ -1,3 +1,5 @@
+import { AscApiError } from './client.ts';
+
 export type Progress = {
   write<T>(doing: string, done: string, work: () => Promise<T>): Promise<T>;
   read<T>(doing: string, work: () => Promise<T>): Promise<T>;
@@ -13,8 +15,11 @@ export function trackProgress(): Progress {
       if (finished.length === 0) {
         throw error;
       }
+      const retry = isRequestProblem(error)
+        ? 'エラーの所を直してから、同じ呼び出しをやり直すと、残りだけを行います'
+        : '同じ呼び出しをやり直すと、残りだけを行います';
       throw new Error(
-        `${finished.join('。')}。${doing}ところで止まりました。同じ呼び出しをやり直すと、残りだけを行います。\n${error instanceof Error ? error.message : String(error)}`,
+        `${finished.join('。')}。${doing}ところで止まりました。${retry}。\n${error instanceof Error ? error.message : String(error)}`,
         { cause: error },
       );
     }
@@ -27,4 +32,14 @@ export function trackProgress(): Progress {
     },
     read: attempt,
   };
+}
+
+// 4xx は、頼んだ中身か、App Store Connect の状態に足りない所がある。429（呼び出しの上限）は、待てば通る
+function isRequestProblem(error: unknown): boolean {
+  return (
+    error instanceof AscApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 429
+  );
 }

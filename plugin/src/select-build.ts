@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import { findApp, type AppSummary } from './apps.ts';
-import { findIncluded, sparseFields, toOne, type AscClient } from './client.ts';
+import { Build, PreReleaseVersion, unusableReason, type BuildResource } from './builds.ts';
+import { findIncluded, sparseFields, type AscClient } from './client.ts';
 import { trackProgress } from './progress.ts';
 import {
   listVersions,
@@ -8,26 +8,6 @@ import {
   type Platform,
   type VersionStatus,
 } from './versions.ts';
-
-const Build = z.object({
-  type: z.literal('builds'),
-  id: z.string(),
-  attributes: z.object({
-    version: z.string(),
-    uploadedDate: z.string(),
-    expired: z.boolean(),
-    processingState: z.string(),
-    buildAudienceType: z.string().nullable(),
-    usesNonExemptEncryption: z.boolean().nullable(),
-  }),
-  relationships: z.object({ preReleaseVersion: toOne }),
-});
-
-const PreReleaseVersion = z.object({
-  type: z.literal('preReleaseVersions'),
-  id: z.string(),
-  attributes: z.object({ version: z.string() }),
-});
 
 const ENCRYPTION_WARNING =
   '輸出コンプライアンス（暗号の使用）の答えが、このビルドにありません。審査に出す前に、App Store Connect で答えてください。Info.plist に ITSAppUsesNonExemptEncryption を入れると、次のビルドからは答えが要りません。';
@@ -111,7 +91,7 @@ async function buildsOf(
   appleId: string,
   platform: Platform,
   versionString: string,
-): Promise<z.infer<typeof Build>[]> {
+): Promise<BuildResource[]> {
   const { data, included } = await client.getAll(
     '/v1/builds',
     {
@@ -130,17 +110,4 @@ async function buildsOf(
       findIncluded(included, 'preReleaseVersions', relationships.preReleaseVersion?.data)
         ?.attributes.version === versionString,
   );
-}
-
-function unusableReason({ attributes }: z.infer<typeof Build>): string | undefined {
-  if (attributes.processingState !== 'VALID') {
-    return `処理の状態が ${attributes.processingState} です。VALID になってから選んでください。`;
-  }
-  if (attributes.expired) {
-    return '期限が切れています。';
-  }
-  if (attributes.buildAudienceType === 'INTERNAL_ONLY') {
-    return 'TestFlight の内部テスト専用のビルドなので、App Store には出せません。';
-  }
-  return undefined;
 }
