@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const ORIGIN = 'https://api.appstoreconnect.apple.com';
 const TIMEOUT_MS = 30_000;
+// 写真のファイルは API の本文より大きい。回線が遅くても送り終えられるだけ待つ
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 export class AscApiError extends Error {
   override name = 'AscApiError';
@@ -17,7 +19,15 @@ type Params = Record<string, string>;
 type Fetched<D, I> = { data: D[]; included: I[] };
 type Schemas<D, I> = { data: z.ZodType<D>; included?: z.ZodType<I> };
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
-export type Attributes = Record<string, string | boolean | null>;
+export type Attributes = Record<string, string | number | boolean | null>;
+
+export type UploadOperation = {
+  method: string;
+  url: string;
+  offset: number;
+  length: number;
+  requestHeaders: { name: string; value: string }[];
+};
 
 export type AscClient = {
   getPage<D, I = never>(
@@ -37,14 +47,26 @@ export type AscClient = {
     relationships: Record<string, Identifier | Identifier[]>,
     included?: object[],
   ): Promise<string>;
+  createResource<D>(
+    type: string,
+    attributes: Attributes,
+    relationships: Record<string, Identifier | Identifier[]>,
+    schema: z.ZodType<D>,
+  ): Promise<D>;
   update(
     type: string,
     id: string,
     attributes: Attributes,
     relationships?: Record<string, Identifier>,
   ): Promise<void>;
-  setRelationship(type: string, id: string, name: string, target: Identifier): Promise<void>;
+  setRelationship(
+    type: string,
+    id: string,
+    name: string,
+    target: Identifier | Identifier[],
+  ): Promise<void>;
   remove(type: string, id: string): Promise<void>;
+  upload(operation: UploadOperation, file: Uint8Array<ArrayBuffer>): Promise<void>;
 };
 
 const Page = z.object({
@@ -55,7 +77,6 @@ const Page = z.object({
 
 const Identifier = z.object({ type: z.string(), id: z.string() });
 type Identifier = z.infer<typeof Identifier>;
-const Created = z.object({ data: Identifier });
 export const toOne = z.object({ data: Identifier.nullish() }).optional();
 export const toMany = z.object({ data: z.array(Identifier).optional() }).optional();
 
@@ -116,8 +137,8 @@ const HINTS: Partial<Record<number, string>> = {
 };
 
 // 書くツールは、いまの状態を読んでから差だけを変えるので、やり直しても二重には変えない
-const WRITE_UNKNOWN_HINT =
-  '変更が App Store Connect に届いたかは分かりません。同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
+const RETRY_HINT = '同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
+const WRITE_UNKNOWN_HINT = `変更が App Store Connect に届いたかは分かりません。${RETRY_HINT}`;
 
 // Apple は、新しい契約に同意するまで、このコードの 403 を返す。ロールの不足とは直し方が違う
 const AGREEMENT_HINT =
@@ -197,6 +218,30 @@ export function createClient(
     return fetched;
   }
 
+  async function post<D>(
+    type: string,
+    attributes: Attributes,
+    relationships: Record<string, Identifier | Identifier[]>,
+    schema: z.ZodType<D>,
+    included?: object[],
+  ): Promise<D> {
+    // 配信する国（appAvailabilities）は、v2 の API にしか無い
+    const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
+    const body = {
+      data: { type, ...resourceBody(attributes, relationships) },
+      ...(included === undefined ? {} : { included }),
+    };
+    const created = z
+      .object({ data: schema })
+      .safeParse(await call('POST', new URL(path, ORIGIN), body));
+    if (!created.success) {
+      throw new Error(
+        `App Store Connect API の ${path} の応答から、作ったものを読めませんでした。${WRITE_UNKNOWN_HINT}`,
+      );
+    }
+    return created.data.data;
+  }
+
   return {
     getPage: (path, params, schemas) => read(path, params, schemas, false),
     getAll: (path, params, schemas) => read(path, params, schemas, true),
@@ -208,20 +253,10 @@ export function createClient(
       ).data;
     },
     async create(type, attributes, relationships, included) {
-      // 配信する国（appAvailabilities）は、v2 の API にしか無い
-      const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
-      const body = {
-        data: { type, ...resourceBody(attributes, relationships) },
-        ...(included === undefined ? {} : { included }),
-      };
-      const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
-      if (!created.success) {
-        throw new Error(
-          `App Store Connect API の ${path} の応答から、作ったものの ID を読めませんでした。${WRITE_UNKNOWN_HINT}`,
-        );
-      }
-      return created.data.data.id;
+      return (await post(type, attributes, relationships, Identifier, included)).id;
     },
+    createResource: (type, attributes, relationships, schema) =>
+      post(type, attributes, relationships, schema),
     async update(type, id, attributes, relationships = {}) {
       await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), {
         data: { type, id, ...resourceBody(attributes, relationships) },
@@ -234,6 +269,33 @@ export function createClient(
     },
     async remove(type, id) {
       await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
+    },
+    // 送り先は Apple が応答で渡す、API の外の URL。API のトークンは送らない
+    async upload({ method, url, offset, length, requestHeaders }, file) {
+      const target = new URL(url);
+      const where = `${method} ${target.origin}${target.pathname}`;
+      if (readOnly) {
+        throw new Error(
+          `書かない設定で動いているので、次のリクエストを送りませんでした: ${where}（${length} バイト）`,
+        );
+      }
+      let response: Response;
+      try {
+        response = await fetchFn(target, {
+          method,
+          headers: Object.fromEntries(requestHeaders.map(({ name, value }) => [name, value])),
+          body: file.subarray(offset, offset + length),
+          signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+        });
+      } catch (error) {
+        throw new Error(
+          `${where} に接続できませんでした（${reasonOf(error, UPLOAD_TIMEOUT_MS)}）。${RETRY_HINT}`,
+          { cause: error },
+        );
+      }
+      if (!response.ok) {
+        throw new Error(`${where} が ${response.status} を返しました。${RETRY_HINT}`);
+      }
     },
   };
 }
@@ -291,12 +353,12 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, path: string): T {
   return result.data;
 }
 
-function reasonOf(error: unknown): string {
+function reasonOf(error: unknown, timeoutMs = TIMEOUT_MS): string {
   if (!(error instanceof Error)) {
     return String(error);
   }
   if (error.name === 'TimeoutError') {
-    return `${TIMEOUT_MS / 1000}秒たっても応答がありません`;
+    return `${timeoutMs / 1000}秒たっても応答がありません`;
   }
   // fetch は、DNS や TLS の失敗を cause に入れ、message は「fetch failed」だけにする
   return error.cause instanceof Error ? error.cause.message : error.message;

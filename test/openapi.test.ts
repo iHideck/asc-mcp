@@ -111,6 +111,12 @@ describe('specViolations', () => {
       'PATCH /v1/appStoreVersions/{id} には、本文が要ります',
     ]);
   });
+  it('仕様で deprecated の操作を使うと、違反として返す', () => {
+    expect(specViolations('delete', api('/v1/appStoreVersionSubmissions/s1'))).toEqual([
+      'DELETE /v1/appStoreVersionSubmissions/{id} は、仕様で deprecated です',
+    ]);
+  });
+
   it('App Store で、Apple シリコンの Mac と Apple Vision Pro に配信する項目は、まだ仕様に無い', () => {
     // 名前が増えたら、Apple が App Store での配信の項目を足したかもしれない。読み書きするツールを作る。
     // いまある 3 つは、TestFlight のグループとビルドのもので、App Store での配信ではない

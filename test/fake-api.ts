@@ -60,7 +60,7 @@ export function noContent(): Response {
   return new Response(null, { status: 204 });
 }
 
-// 応答は「パス」（GET）か「メソッド パス」の名前で用意する
+// 応答は「パス」（GET）か「メソッド パス」の名前で用意する。API の外の URL は、パスの前にオリジンを付ける
 export function fakeFetch(routes: Record<string, Response | Response[]>) {
   const queues = new Map(
     Object.entries(routes).map(([route, responses]) => [
@@ -70,11 +70,13 @@ export function fakeFetch(routes: Record<string, Response | Response[]>) {
   );
   return vi.fn<typeof fetch>(async (input, init) => {
     const { method, url, body } = request(input, init);
-    const violations = specViolations(method.toLowerCase() as Method, url, body);
+    // 画面写真の送り先は、Apple が応答で渡す、API の外の URL。仕様に無いので、照らさない
+    const outside = url.origin !== ORIGIN;
+    const violations = outside ? [] : specViolations(method.toLowerCase() as Method, url, body);
     if (violations.length > 0) {
       throw new Error(`OpenAPI の仕様と違うリクエストです。${violations.join('。')}`);
     }
-    const route = `${method} ${url.pathname}`;
+    const route = `${method} ${outside ? url.origin : ''}${url.pathname}`;
     const response = queues.get(route)?.shift();
     if (response === undefined) {
       throw new Error(`応答を用意していないリクエストです: ${route}${url.search}`);

@@ -23,6 +23,7 @@ type Schema = {
   anyOf?: Schema[];
 };
 type Operation = {
+  deprecated?: boolean;
   parameters?: Parameter[];
   requestBody?: { required?: boolean; content: Record<string, { schema: Schema } | undefined> };
 };
@@ -50,6 +51,9 @@ export function specViolations(method: Method, url: URL, body?: unknown): string
     (parameter) => parameter.in === 'query',
   );
   const violations: string[] = [];
+  if (operation.deprecated === true) {
+    violations.push(`${method.toUpperCase()} ${template} は、仕様で deprecated です`);
+  }
   for (const [name, value] of url.searchParams) {
     if (PAGING_PARAMETERS.has(name)) {
       continue;

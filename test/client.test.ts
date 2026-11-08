@@ -23,6 +23,20 @@ describe('createClient', () => {
     await expect(client.remove('appStoreVersionPhasedReleases', 'p1')).rejects.toThrow(
       '送りませんでした: DELETE /v1/appStoreVersionPhasedReleases/p1',
     );
+    await expect(
+      client.upload(
+        {
+          method: 'PUT',
+          url: 'https://store-001.blobstore.apple.com/s1/part1?token=x',
+          offset: 0,
+          length: 3,
+          requestHeaders: [],
+        },
+        new Uint8Array([1, 2, 3]),
+      ),
+    ).rejects.toThrow(
+      '送りませんでした: PUT https://store-001.blobstore.apple.com/s1/part1（3 バイト）',
+    );
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -50,7 +64,7 @@ describe('createClient', () => {
     expect(read).not.toContain('届いたかは分かりません');
   });
 
-  it('作ったものの ID を応答から読めなければ、届いたか分からないことを添える', async () => {
+  it('作ったものを応答から読めなければ、届いたか分からないことを添える', async () => {
     const fetchFn = fakeFetch({
       'POST /v1/appStoreVersionPhasedReleases': jsonResponse(201, { data: null }),
     });
@@ -61,7 +75,7 @@ describe('createClient', () => {
         { phasedReleaseState: 'INACTIVE' },
         { appStoreVersion: VERSION },
       ),
-    ).rejects.toThrow(/ID を読めませんでした[\s\S]*届いたかは分かりません/);
+    ).rejects.toThrow(/作ったものを読めませんでした[\s\S]*届いたかは分かりません/);
   });
   it('Apple のエラーの associatedErrors も、項目ごとに返す', async () => {
     const fetchFn = fakeFetch({
