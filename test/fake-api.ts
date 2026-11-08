@@ -52,25 +52,53 @@ function identifiers(ids: string | string[] | null) {
   return Array.isArray(ids) ? ids.map(identifier) : identifier(ids);
 }
 
+export function created(type: string, id: string): Response {
+  return jsonResponse(201, { data: { type, id, attributes: {} } });
+}
+
+export function noContent(): Response {
+  return new Response(null, { status: 204 });
+}
+
+// 応答は「パス」（GET）か「メソッド パス」の名前で用意する
 export function fakeFetch(routes: Record<string, Response | Response[]>) {
   const queues = new Map(
-    Object.entries(routes).map(([path, route]) => [path, Array.isArray(route) ? route : [route]]),
+    Object.entries(routes).map(([route, responses]) => [
+      route.includes(' ') ? route : `GET ${route}`,
+      Array.isArray(responses) ? [...responses] : [responses],
+    ]),
   );
   return vi.fn<typeof fetch>(async (input, init) => {
-    const url = new URL(input instanceof Request ? input.url : input);
-    const method = (init?.method ?? 'GET').toLowerCase() as Method;
-    const violations = specViolations(method, url);
+    const { method, url, body } = request(input, init);
+    const violations = specViolations(method.toLowerCase() as Method, url, body);
     if (violations.length > 0) {
       throw new Error(`OpenAPI の仕様と違うリクエストです。${violations.join('。')}`);
     }
-    const response = queues.get(url.pathname)?.shift();
+    const route = `${method} ${url.pathname}`;
+    const response = queues.get(route)?.shift();
     if (response === undefined) {
-      throw new Error(`応答を用意していないリクエストです: ${url.pathname}${url.search}`);
+      throw new Error(`応答を用意していないリクエストです: ${route}${url.search}`);
     }
     return response;
   });
 }
 
 export function requestedUrls(fetchFn: ReturnType<typeof fakeFetch>): URL[] {
-  return fetchFn.mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : input));
+  return fetchFn.mock.calls.map(([input, init]) => request(input, init).url);
+}
+
+// GET のほかに送ったリクエスト（作る・変える・消す）を、送った順に返す
+export function sentWrites(fetchFn: ReturnType<typeof fakeFetch>) {
+  return fetchFn.mock.calls
+    .map(([input, init]) => request(input, init))
+    .filter(({ method }) => method !== 'GET')
+    .map(({ method, url, body }) => ({ method, path: url.pathname, body }));
+}
+
+function request(input: string | URL | Request, init: RequestInit | undefined) {
+  return {
+    method: init?.method ?? 'GET',
+    url: new URL(input instanceof Request ? input.url : input),
+    body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
+  };
 }

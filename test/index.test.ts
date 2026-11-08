@@ -74,6 +74,15 @@ describe('MCP サーバー', () => {
         annotations: readOnly,
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
+      expect.objectContaining({
+        name: 'ensure_version',
+        annotations: expect.objectContaining({
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        }),
+        inputSchema: expect.objectContaining({ required: ['bundleId', 'versionString'] }),
+      }),
     ]);
 
     const called = await server.request('tools/call', { name: 'list_apps', arguments: {} });

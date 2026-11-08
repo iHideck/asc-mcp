@@ -9,6 +9,7 @@ App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code �
 | `list_apps` | アプリの名前・バンドル ID・Apple ID を返す |
 | `get_release_status` | 新しい5つのビルド（処理と TestFlight の状態、配ったグループ、アップロードのときの `ITMS-` の警告）と、公開中の版と次に出す版の状態を返す |
 | `get_localizations` | 版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す |
+| `ensure_version` | 次に出す版を用意する。その番号の版が無ければ作り、編集中の版の番号が違えば直す。公開のしかたと段階的リリースをそろえる |
 
 ## 入れ方
 
@@ -39,4 +40,4 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 
 テストは、送るリクエストのパス・引数・値が、OpenAPI の仕様にあるかを確かめる。CI は毎回、Apple がいま配っている仕様を落として照らす。
 
-手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。
+手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。このとき、書くツールは App Store Connect を変えず、送るはずだったリクエストをエラーで返す。本当に書いて試すときは、`ASC_READ_ONLY=0` も入れる。

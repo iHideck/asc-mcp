@@ -16,6 +16,8 @@ export class AscApiError extends Error {
 type Params = Record<string, string>;
 type Fetched<D, I> = { data: D[]; included: I[] };
 type Schemas<D, I> = { data: z.ZodType<D>; included?: z.ZodType<I> };
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type Attributes = Record<string, string | boolean | null>;
 
 export type AscClient = {
   getPage<D, I = never>(
@@ -28,6 +30,13 @@ export type AscClient = {
     params: Params,
     schemas: Schemas<D, I>,
   ): Promise<Fetched<D, I>>;
+  create(
+    type: string,
+    attributes: Attributes,
+    relationships: Record<string, Identifier>,
+  ): Promise<string>;
+  update(type: string, id: string, attributes: Attributes): Promise<void>;
+  remove(type: string, id: string): Promise<void>;
 };
 
 const Page = z.object({
@@ -37,6 +46,8 @@ const Page = z.object({
 });
 
 const Identifier = z.object({ type: z.string(), id: z.string() });
+type Identifier = z.infer<typeof Identifier>;
+const Created = z.object({ data: Identifier });
 export const toOne = z.object({ data: Identifier.nullish() }).optional();
 export const toMany = z.object({ data: z.array(Identifier).optional() }).optional();
 
@@ -80,6 +91,9 @@ const ErrorBody = z.object({
       code: z.string().optional(),
       title: z.string().optional(),
       detail: z.string().optional(),
+      source: z
+        .object({ pointer: z.string().optional(), parameter: z.string().optional() })
+        .optional(),
     }),
   ),
 });
@@ -90,32 +104,63 @@ const HINTS: Partial<Record<number, string>> = {
   429: 'API キーごとの、1時間あたりの呼び出しの上限に達しました。しばらく待ってから、やり直してください。',
 };
 
+// 書くツールは、いまの状態を読んでから差だけを変えるので、やり直しても二重には変えない
+const WRITE_UNKNOWN_HINT =
+  '変更が App Store Connect に届いたかは分かりません。同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
+
 // Apple は、新しい契約に同意するまで、このコードの 403 を返す。ロールの不足とは直し方が違う
 const AGREEMENT_HINT =
   'Account Holder が App Store Connect か Apple Developer のサイトにサインインし、新しい契約に同意してください。API キーを作り直しても直りません。';
 
-export function createClient(token: () => string, fetchFn: typeof fetch = fetch): AscClient {
-  async function get(url: URL): Promise<unknown> {
+// 書かない設定は、値が無いか 0 のときだけ外す。打ち間違い（true など）で、本番に書いてしまわないため
+export function isReadOnly(value: string | undefined): boolean {
+  return value !== undefined && value !== '' && value !== '0';
+}
+
+export function createClient(
+  token: () => string,
+  fetchFn: typeof fetch = fetch,
+  readOnly = false,
+): AscClient {
+  async function call(method: Method, url: URL, body?: object): Promise<unknown> {
     // 次のページの URL は応答から受け取る。App Store Connect API 以外には、トークンを送らない
     if (url.origin !== ORIGIN) {
       throw new Error(`App Store Connect API 以外の URL は呼びません: ${url.origin}`);
     }
+    if (readOnly && method !== 'GET') {
+      throw new Error(
+        `書かない設定で動いているので、次のリクエストを送りませんでした: ${method} ${url.pathname}${body === undefined ? '' : ` ${JSON.stringify(body)}`}`,
+      );
+    }
     let response: Response;
     try {
       response = await fetchFn(url, {
-        headers: { Authorization: `Bearer ${token()}` },
+        method,
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        body: body === undefined ? null : JSON.stringify(body),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch (error) {
-      throw new Error(`App Store Connect API に接続できませんでした（${reasonOf(error)}）。`, {
-        cause: error,
-      });
+      throw new Error(
+        `App Store Connect API に接続できませんでした（${reasonOf(error)}）。${method === 'GET' ? '' : WRITE_UNKNOWN_HINT}`,
+        { cause: error },
+      );
     }
-    const body: unknown = await response.json().catch(() => undefined);
+    if (response.status === 204) {
+      return undefined;
+    }
+    const parsed: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
-      throw new AscApiError(response.status, describeError(response.status, body));
+      const message = describeError(response.status, parsed);
+      throw new AscApiError(
+        response.status,
+        method !== 'GET' && response.status >= 500 ? `${message}\n${WRITE_UNKNOWN_HINT}` : message,
+      );
     }
-    return body;
+    return parsed;
   }
 
   async function read<D, I>(
@@ -130,7 +175,7 @@ export function createClient(token: () => string, fetchFn: typeof fetch = fetch)
       next.searchParams.set(name, value);
     }
     while (next !== undefined) {
-      const page: z.infer<typeof Page> = parse(Page, await get(next), path);
+      const page: z.infer<typeof Page> = parse(Page, await call('GET', next), path);
       fetched.data.push(...parse(z.array(schemas.data), page.data, path));
       if (schemas.included !== undefined) {
         fetched.included.push(...parse(z.array(schemas.included), page.included ?? [], path));
@@ -147,6 +192,31 @@ export function createClient(token: () => string, fetchFn: typeof fetch = fetch)
   return {
     getPage: (path, params, schemas) => read(path, params, schemas, false),
     getAll: (path, params, schemas) => read(path, params, schemas, true),
+    async create(type, attributes, relationships) {
+      const path = `/v1/${type}`;
+      const body = {
+        data: {
+          type,
+          attributes,
+          relationships: Object.fromEntries(
+            Object.entries(relationships).map(([name, target]) => [name, { data: target }]),
+          ),
+        },
+      };
+      const created = Created.safeParse(await call('POST', new URL(path, ORIGIN), body));
+      if (!created.success) {
+        throw new Error(
+          `App Store Connect API の ${path} の応答から、作ったものの ID を読めませんでした。${WRITE_UNKNOWN_HINT}`,
+        );
+      }
+      return created.data.data.id;
+    },
+    async update(type, id, attributes) {
+      await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), { data: { type, id, attributes } });
+    },
+    async remove(type, id) {
+      await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
+    },
   };
 }
 
@@ -176,9 +246,11 @@ function describeError(status: number, body: unknown): string {
   const hint = errors.some((error) => error.code?.includes('REQUIRED_AGREEMENTS'))
     ? AGREEMENT_HINT
     : HINTS[status];
-  const details = errors.map((error) =>
-    [error.code, error.title, error.detail].filter(Boolean).join(': '),
-  );
+  const details = errors.map((error) => {
+    const where = error.source?.pointer ?? error.source?.parameter;
+    const text = [error.code, error.title, error.detail].filter(Boolean).join(': ');
+    return where === undefined ? text : `${text}（${where}）`;
+  });
   return [`App Store Connect API が ${status} を返しました。`, hint, ...details]
     .filter((line) => line !== undefined)
     .join('\n');
