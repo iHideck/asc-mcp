@@ -12,7 +12,7 @@ import { getLocalizations } from './localizations.ts';
 import { setFreePrice } from './price.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { PHASED_RELEASE_ACTIONS, releaseVersion, setPhasedRelease } from './release.ts';
-import { setReviewDetail } from './review-detail.ts';
+import { copyReviewContact, setReviewDetail } from './review-detail.ts';
 import { cancelReview, submitForReview } from './review-submission.ts';
 import { selectBuild } from './select-build.ts';
 import { localizationInput, setLocalizations } from './set-localizations.ts';
@@ -224,6 +224,34 @@ server.registerTool(
     },
   },
   async (request) => json(await setReviewDetail(await getClient(), request)),
+);
+
+server.registerTool(
+  'copy_review_contact',
+  {
+    title: '審査の連絡先を写す',
+    description:
+      '審査の連絡先（名・姓・電話番号・メール）を、ほかのアプリの版から、編集できる版（提出の準備中・却下のあと）に写す。写す元は、そのアプリの新しい版から、連絡先がそろったものを選ぶ。違う項目だけを写し、審査の情報がまだ無い版では作る。連絡先の中身は、結果にもエラーの文にも出さない。写した項目の名前と、欠けている項目を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('連絡先を写す先の版（例: 1.0.0）。省くと、編集できる版に写す'),
+      fromBundleId: z
+        .string()
+        .min(1)
+        .describe('連絡先を写す元のアプリのバンドル ID（例: com.ihideck.machosterone）'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await copyReviewContact(await getClient(), request)),
 );
 
 const categoryId = (description: string) => z.string().min(1).optional().describe(description);

@@ -111,6 +111,11 @@ describe('MCP サーバー', () => {
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
       expect.objectContaining({
+        name: 'copy_review_contact',
+        annotations: expect.objectContaining({ readOnlyHint: false, idempotentHint: true }),
+        inputSchema: expect.objectContaining({ required: ['bundleId', 'fromBundleId'] }),
+      }),
+      expect.objectContaining({
         name: 'set_app_info',
         annotations: expect.objectContaining({
           readOnlyHint: false,
@@ -152,13 +157,14 @@ describe('MCP サーバー', () => {
       'select_build',
       'set_localizations',
       'set_review_detail',
+      'copy_review_contact',
       'set_app_info',
     ];
     expect(
       (listed.result?.tools as { name: string; _meta?: unknown }[])
         .filter(({ name }) => writing.includes(name))
         .map(({ _meta }) => _meta),
-    ).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    ).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
 
     const called = await server.request('tools/call', { name: 'list_apps', arguments: {} });
     expect(called.result).toMatchObject({
