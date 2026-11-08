@@ -280,6 +280,61 @@ describe('setLocalizations', () => {
     ]);
   });
 
+  it('途中で失敗したら、済んだ言語を添えて返し、やり直すと残りだけを送る', async () => {
+    const failing = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: page([live, draft]),
+      [VERSION_TEXTS]: page([versionText('lja', 'ja'), versionText('len', 'en-US')]),
+      'PATCH /v1/appStoreVersionLocalizations/lja': jsonResponse(200, { data: {} }),
+      'PATCH /v1/appStoreVersionLocalizations/len': jsonResponse(500, {
+        errors: [{ status: '500', code: 'UNEXPECTED_ERROR' }],
+      }),
+    });
+    const retrying = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: page([live, draft]),
+      [VERSION_TEXTS]: [
+        page([versionText('lja', 'ja', { keywords: '点検' }), versionText('len', 'en-US')]),
+        page([
+          versionText('lja', 'ja', { keywords: '点検' }),
+          versionText('len', 'en-US', { keywords: 'inspection' }),
+        ]),
+      ],
+      'PATCH /v1/appStoreVersionLocalizations/len': jsonResponse(200, { data: {} }),
+    });
+    const texts = [
+      { locale: 'ja', keywords: '点検' },
+      { locale: 'en-US', keywords: 'inspection' },
+    ];
+
+    await expect(set(failing, texts)).rejects.toThrow(
+      /^ja のキーワードを変えました。en-US のキーワードを変えるところで止まりました。同じ呼び出しをやり直すと、残りだけを行います。\n[\s\S]*500/,
+    );
+    await set(retrying, texts);
+
+    expect(sentWrites(retrying)).toEqual([
+      patch('appStoreVersionLocalizations', 'len', { keywords: 'inspection' }),
+    ]);
+  });
+
+  it('入った値が頼んだものと違えば、知らせる', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: page([live, draft]),
+      [VERSION_TEXTS]: [
+        page([versionText('lja', 'ja')]),
+        page([versionText('lja', 'ja', { promotionalText: '新しくなりました' })]),
+      ],
+      'PATCH /v1/appStoreVersionLocalizations/lja': jsonResponse(200, { data: {} }),
+    });
+
+    const result = await set(fetchFn, [{ locale: 'ja', promotionalText: '新しくなりました。\n' }]);
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining('頼んだものと違います: ja のプロモーション用テキスト'),
+    ]);
+  });
+
   it('編集できる App 情報の状態の名前が、Apple の仕様にある', () => {
     expect(
       specAt('/components/schemas/AppInfo/properties/attributes/properties/state/enum'),

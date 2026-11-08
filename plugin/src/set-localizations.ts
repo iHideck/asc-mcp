@@ -6,6 +6,7 @@ import {
   readAppInfoLocalizations,
   readVersionLocalizations,
 } from './localizations.ts';
+import { trackProgress } from './progress.ts';
 import { isFirstRelease, listVersions, pickEditableVersion, type Platform } from './versions.ts';
 
 export const EDITABLE_APP_INFO_STATES: readonly string[] = [
@@ -99,6 +100,7 @@ export type SetLocalizationsResult = {
   version: { versionString: string; state: string };
   changes: LocalizationChange[];
   skipped: SkippedField[];
+  warnings: string[];
 };
 
 type Wanted = { locale: string; values: Partial<Record<FieldName, string | null>> };
@@ -149,23 +151,35 @@ export async function setLocalizations(
   const read = () => readSnapshot(client, app.appleId, version.id, needsAppInfo);
   const before = await read();
   const writes = plan(wanted, before);
-  for (const { resource, id, attributes } of writes) {
-    await client.update(resource, id, attributes);
+  const progress = trackProgress();
+  for (const { resource, id, locale, fields, attributes } of writes) {
+    const what = `${locale} の${fields.map((field) => rule(field).label).join('・')}`;
+    await progress.write(`${what}を変える`, `${what}を変えました`, () =>
+      client.update(resource, id, attributes),
+    );
   }
-  const after = writes.length === 0 ? before : await read();
+  const after = writes.length === 0 ? before : await progress.read('変えた文を読み直す', read);
+  const changes = writes.flatMap((write) =>
+    write.fields.map((field) => ({
+      locale: write.locale,
+      field,
+      before: valueIn(before, write, field),
+      after: valueIn(after, write, field),
+    })),
+  );
   return {
     app,
     platform: request.platform,
     version: { versionString: version.status.versionString, state: version.status.state },
-    changes: writes.flatMap((write) =>
-      write.fields.map((field) => ({
-        locale: write.locale,
-        field,
-        before: valueIn(before, write, field),
-        after: valueIn(after, write, field),
-      })),
-    ),
+    changes,
     skipped,
+    warnings: changes.flatMap(({ locale, field, after: stored }) =>
+      stored === (wanted.find((entry) => entry.locale === locale)?.values[field] ?? null)
+        ? []
+        : [
+            `App Store Connect の値が、頼んだものと違います: ${locale} の${rule(field).label}（Apple が直したかもしれません。get_localizations で確かめてください）`,
+          ],
+    ),
   };
 }
 
