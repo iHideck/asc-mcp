@@ -1,5 +1,7 @@
 # asc-mcp
 
+[English](README.md) | 日本語
+
 App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code のプラグインとして入れ、App Store へのリリース作業を Claude Code に頼めるようにする。
 
 ## ツール
