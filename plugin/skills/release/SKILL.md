@@ -1,5 +1,5 @@
 ---
-description: App Store へのリリース（次の版の準備・審査への提出・公開）を、asc-mcp のツールで進める。「次の版を出したい」「審査に出して」「公開して」「段階的リリースを止めて」などと頼まれたときに使う。
+description: App Store へのリリース（次の版の準備・初めて出すアプリの設定・審査への提出・公開）を、asc-mcp のツールで進める。「次の版を出したい」「初めて App Store に出したい」「審査に出して」「公開して」「段階的リリースを止めて」などと頼まれたときに使う。
 ---
 
 # App Store へのリリース
@@ -23,10 +23,26 @@ asc-mcp のツールで、次の版の準備から公開までを進める。ア
 2. `select_build` でビルドを選ぶ
 3. `get_localizations` でいまの文を読み、`set_localizations` で変える文を入れる。初めて出す版でなければ、新機能の文（`whatsNew`）は全部の言語に要る
    - アプリのリポジトリに掲載の文の決まりや正本（`docs/release.md` など）があれば、それに従う。入れたあと、正本と食い違いがないかを確かめる
-4. `set_review_detail` で、審査メモと、サインインが要るかを入れる
+4. `set_review_detail` で、審査メモと、サインインが要るかを入れる。審査の連絡先が欠けていれば、`copy_review_contact` でほかのアプリの版から写す
 5. 各ツールの `warnings` と `skipped` を、利用者に伝える
 
-画面でしかできないこと（審査の連絡先と審査用のアカウント・App のプライバシー・画面写真・配信の国と価格）が残っていれば、App Store Connect の画面で入れてもらう。
+画面でしかできないこと（審査用のアカウント・App のプライバシー・画面写真）が残っていれば、App Store Connect の画面で入れてもらう。
+
+## 初めて出すアプリの設定
+
+初めて App Store に出すアプリは、2 のほかに、次のものを入れる。どれも、同じ呼び出しをやり直してよい。
+
+1. `set_app_info` で、カテゴリ・コンテンツ配信権・年齢制限の答えを入れる。返る `appStoreAgeRating` が、App Store が決めた年齢
+2. `set_price` で、価格を入れる（いまは無料だけ）
+3. `set_availability` で、配信する国を入れる。ほかのアプリと同じ国にするなら、`sameAsApp` を使う
+4. `copy_review_contact` で、審査の連絡先を、ほかのアプリの版から写す
+
+価格と配信する国は、呼ぶたびに利用者の確認が出る。呼ぶ前に、入れる値を利用者に見せる。
+
+次のものは API に無いので、[App Store Connect](https://appstoreconnect.apple.com/apps) でアプリを開き、画面で入れてもらう。
+
+- 「App のプライバシー」
+- Apple シリコン搭載の Mac と Apple Vision Pro での配信。「価格および配信状況」のページの、「Appleシリコン搭載のMacでのiPhoneおよびiPad用のアプリ」と「Apple Vision Pro上のiPhoneおよびiPadアプリ」の「配信可能にする」で決める。iPhone だけに出すときは、2 つとも外してもらう。Claude からは読めないので、外したかを利用者に確かめる
 
 ## 3. 審査に出す
 
