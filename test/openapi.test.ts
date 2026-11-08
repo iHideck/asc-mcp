@@ -1,8 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { specViolations } from './openapi.ts';
+import { specAt, specViolations } from './openapi.ts';
 
 function api(pathAndQuery: string): URL {
   return new URL(pathAndQuery, 'https://api.appstoreconnect.apple.com');
+}
+
+// 仕様のすべての形から、名前が当てはまる項目を集める
+function propertyNames(pattern: RegExp): string[] {
+  const names = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== 'object' || node === null) {
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'properties' && typeof value === 'object' && value !== null) {
+        Object.keys(value)
+          .filter((name) => pattern.test(name))
+          .forEach((name) => names.add(name));
+      }
+      walk(value);
+    }
+  };
+  walk(specAt('/components/schemas'));
+  return [...names].sort();
 }
 
 describe('specViolations', () => {
@@ -85,6 +109,15 @@ describe('specViolations', () => {
     ]);
     expect(specViolations('patch', api('/v1/appStoreVersions/v1'))).toEqual([
       'PATCH /v1/appStoreVersions/{id} には、本文が要ります',
+    ]);
+  });
+  it('App Store で、Apple シリコンの Mac と Apple Vision Pro に配信する項目は、まだ仕様に無い', () => {
+    // 名前が増えたら、Apple が App Store での配信の項目を足したかもしれない。読み書きするツールを作る。
+    // いまある 3 つは、TestFlight のグループとビルドのもので、App Store での配信ではない
+    expect(propertyNames(/AppleSilicon|AppleVision|VisionPro|MacAppStore/i)).toEqual([
+      'iosBuildsAvailableForAppleSiliconMac',
+      'iosBuildsAvailableForAppleVision',
+      'isIosBuildMacAppStoreCompatible',
     ]);
   });
 });
