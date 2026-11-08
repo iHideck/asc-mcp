@@ -118,6 +118,15 @@ describe('MCP サーバー', () => {
         name: 'cancel_review',
         _meta: { 'anthropic/requiresUserInteraction': true },
       }),
+      expect.objectContaining({
+        name: 'release_version',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+      }),
+      expect.objectContaining({
+        name: 'set_phased_release',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+        inputSchema: expect.objectContaining({ required: ['bundleId', 'action'] }),
+      }),
     ]);
     const writing = ['ensure_version', 'select_build', 'set_localizations', 'set_review_detail'];
     expect(
