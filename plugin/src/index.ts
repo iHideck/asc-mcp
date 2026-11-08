@@ -8,6 +8,7 @@ import { createClient, isReadOnly, type AscClient } from './client.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
+import { PHASED_RELEASE_ACTIONS, releaseVersion, setPhasedRelease } from './release.ts';
 import { setReviewDetail } from './review-detail.ts';
 import { cancelReview, submitForReview } from './review-submission.ts';
 import { selectBuild } from './select-build.ts';
@@ -270,6 +271,63 @@ server.registerTool(
     _meta: NEEDS_APPROVAL,
   },
   async (request) => json(await cancelReview(await getClient(), request)),
+);
+
+server.registerTool(
+  'release_version',
+  {
+    title: '版を公開する',
+    description:
+      '審査が通り、手動の公開を待っている版（PENDING_DEVELOPER_RELEASE）を、App Store に公開する。公開は取り消せない。公開済みの版は、そのまま返す。段階的リリースを付けた版は、公開すると段階的リリースが始まる。呼ぶたびに、利用者の確認が要る。公開する前と後の版を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('公開する版（例: 1.0.2）。省くと、公開を待っている版を公開する'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await releaseVersion(await getClient(), request)),
+);
+
+server.registerTool(
+  'set_phased_release',
+  {
+    title: '段階的リリースを変える',
+    description:
+      '進めている段階的リリースを、止める（pause）・再開する（resume）・全員に出す（complete）。全員に出すのは取り消せない。もうその状態なら、そのまま返す。まだ始まっていない・もう終わった段階的リリースは変えない。呼ぶたびに、利用者の確認が要る。変える前と後の版を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          '段階的リリースを変える版（例: 1.0.2）。省くと、段階的リリースを進めている版を変える',
+        ),
+      action: z
+        .enum(PHASED_RELEASE_ACTIONS)
+        .describe(
+          'pause は止める、resume は再開する、complete は残りの利用者にも、すぐに全員に出す',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await setPhasedRelease(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
