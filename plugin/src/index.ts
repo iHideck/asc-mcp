@@ -9,6 +9,7 @@ import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
 import { getLocalizations } from './localizations.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { selectBuild } from './select-build.ts';
+import { localizationInput, setLocalizations } from './set-localizations.ts';
 import { PLATFORMS } from './versions.ts';
 
 let client: AscClient | undefined;
@@ -149,6 +150,34 @@ server.registerTool(
     },
   },
   async (request) => json(await selectBuild(await getClient(), request)),
+);
+
+server.registerTool(
+  'set_localizations',
+  {
+    title: '掲載の文を入れる',
+    description:
+      '編集できる版（提出の準備中・却下のあと）に、言語ごとの掲載の文を入れる。版の文（概要・キーワード・プロモーション用テキスト・新機能・URL）と、App 情報の文（名前・サブタイトル・プライバシーポリシーの URL）のうち、渡した項目だけを変える。入れる前に上限の文字数と URL の形を確かめ、1つでも合わなければ何も変えない。初めて出す版では、新機能の文を飛ばす。言語は足さない。変えた項目の前と後と、気を付けること（warnings）を返す。',
+    inputSchema: z.object({
+      ...appArguments,
+      versionString: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('文を入れる版（例: 1.0.2）。省くと、編集できる版に入れる'),
+      localizations: z
+        .array(localizationInput)
+        .min(1)
+        .describe('言語ごとの文。渡さない項目は変えない'),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await setLocalizations(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
