@@ -1,59 +1,61 @@
 # asc-mcp
 
-App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code のプラグインとして入れ、App Store へのリリース作業を Claude Code に頼めるようにする。
+English | [日本語](README.ja.md)
 
-## ツール
+An unofficial MCP server for the App Store Connect API. Install it as a Claude Code plugin, then ask Claude Code to do your App Store release work.
 
-| ツール | すること |
+## Tools
+
+| Tool | What it does |
 | :- | :- |
-| `list_apps` | アプリの名前・バンドル ID・Apple ID を返す |
-| `get_release_status` | 新しい5つのビルド（処理と TestFlight の状態、配ったグループ、アップロードのときの `ITMS-` の警告）と、公開中の版と次に出す版の状態を返す |
-| `get_localizations` | 版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す |
-| `ensure_version` | 次に出す版を用意する。その番号の版が無ければ作り、編集中の版の番号が違えば直す。公開のしかたと段階的リリースをそろえる |
-| `select_build` | 編集中の版に、審査に出すビルドを選ぶ。処理が済んでいない・期限切れ・内部テスト専用のビルドは選ばない |
-| `set_localizations` | 編集中の版と App 情報に、言語ごとの掲載の文を入れる。入れる前に、上限の文字数と URL の形を確かめる |
-| `replace_screenshots` | 編集中の版の、1つの言語の1つの欄の画面写真を、渡したファイルに入れ替える。上げる前に、写真の形式と大きさが欄に合うかを確かめる |
-| `set_review_detail` | 編集中の版の、審査メモと、サインインが要るかを入れる。連絡先や審査用のアカウントが欠けていれば知らせる |
-| `copy_review_contact` | 審査の連絡先を、ほかのアプリの版から写す。連絡先の中身は返さない |
-| `set_app_info` | App 情報のカテゴリ・コンテンツ配信権・年齢制限の答えを入れ、App Store が決めた年齢を返す |
-| `set_price` | アプリの価格を入れる（いまは無料だけ）。呼ぶたびに、利用者の確認が要る |
-| `set_availability` | 配信する国を入れる。国の一覧か、同じ国にするアプリを渡す。呼ぶたびに、利用者の確認が要る |
-| `submit_for_review` | 版を審査に出す。出す前に、選んであるビルドを確かめる。呼ぶたびに、利用者の確認が要る |
-| `cancel_review` | 審査待ち・審査中の版を、審査から取り下げる。呼ぶたびに、利用者の確認が要る |
-| `release_version` | 審査が通って公開を待っている版を公開する。取り消せない。呼ぶたびに、利用者の確認が要る |
-| `set_phased_release` | 段階的リリースを、止める・再開する・全員に出す。全員に出すのは取り消せない。呼ぶたびに、利用者の確認が要る |
+| `list_apps` | Returns the name, bundle ID, and Apple ID of each app. |
+| `get_release_status` | Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the `ITMS-` warnings from its upload. |
+| `get_localizations` | Returns the localized text of a version (description, keywords, promotional text, what's new, and URLs) and of App Information (name, subtitle, and privacy policy URL). |
+| `ensure_version` | Prepares the next version. Creates the version if no version has that number. Changes the number of the editable version if the number differs. Also sets the release type and the phased release to the values you pass. |
+| `select_build` | Selects the build to submit for the editable version. Does not select a build that is still processing, expired, or for internal testing only. |
+| `set_localizations` | Writes localized App Store text to the editable version and App Information. Checks the character limits and URL formats before it writes. |
+| `replace_screenshots` | Replaces the screenshots for one language and one display type of the editable version with the files you pass. Checks that the format and size of each image fit the display type before it uploads. |
+| `set_review_detail` | Sets the review notes of the editable version and whether the app requires sign-in. Reports a missing contact or demo account. |
+| `copy_review_contact` | Copies the App Review contact from a version of another app. Does not return the contact details. |
+| `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns. |
+| `set_price` | Sets the app price. The only supported price is free. Each call requires your confirmation. |
+| `set_availability` | Sets the territories where the app is available. Pass a list of territories or an app to match. Each call requires your confirmation. |
+| `submit_for_review` | Submits a version for App Review. Checks the selected build first. Each call requires your confirmation. |
+| `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. Each call requires your confirmation. |
+| `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |
+| `set_phased_release` | Pauses, resumes, or completes a phased release. You cannot undo a release to all users. Each call requires your confirmation. |
 
-## スキル
+## Skill
 
-`/asc-mcp:release` は、次の版の準備（初めて出すアプリの設定を含む）から、審査に出して公開するまでを、上のツールでつなぐ。「次の版を出したい」「審査に出して」と頼むと、Claude が読み込む。
+`/asc-mcp:release` uses the tools above to take a version from preparation through App Review to release. Preparation includes the first-time setup of a new app. When you say something like "Prepare the next version" or "Submit it for review", Claude loads the skill.
 
-## 入れ方
+## Install
 
-MCP サーバーは、PATH にある Node（24 以上）で動く。
+The MCP server runs on the Node in your PATH. It requires Node 24 or later.
 
-1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager か Admin にする。そのロールのチームキーがもうあれば、それを使える
-2. ダウンロードした `AuthKey_<Key ID>.p8` を `~/.appstoreconnect/private_keys/` に置き、`chmod 600` で自分だけが読めるようにする
-3. Claude Code で、次を打つ
+1. In App Store Connect, go to **Users and Access** > **Integrations** > **App Store Connect API** and create a team key. Set the role to App Manager or Admin. If you already have a team key with one of these roles, you can use that key.
+2. Move the downloaded `AuthKey_<Key ID>.p8` file to `~/.appstoreconnect/private_keys/`. Run `chmod 600` on the file so that only you can read it.
+3. In Claude Code, run these commands:
 
    ```
    /plugin marketplace add iHideck/asc-mcp
    /plugin install asc-mcp@asc-mcp
    ```
 
-4. 設定の画面で、Issuer ID と Key ID を入れる。あとから直すときは、`/plugin configure asc-mcp@asc-mcp` を打つ
+4. On the configuration screen, enter the Issuer ID and the Key ID. To change them later, run `/plugin configure asc-mcp@asc-mcp`.
 
-## 開発
+## Development
 
-プラグインは `plugin/` にある。Claude Code がプラグインと一緒に入れるのは、`plugin/package.json` の依存だけ。ESLint などの開発の道具は、ルートの `package.json` に置く。
+The plugin is in `plugin/`. With the plugin, Claude Code installs only the dependencies in `plugin/package.json`. Keep development tools such as ESLint in the root `package.json`.
 
-| コマンド | すること |
+| Command | What it does |
 | :- | :- |
-| `make setup` | 依存を入れ、Apple の OpenAPI の仕様を落とす |
-| `make check` | CI と同じ検査（ESLint・整形・型の検査・テスト）を流す |
-| `make download-openapi` | Apple がいま配っている OpenAPI の仕様を、`.local/` に落とし直す |
-| `make validate-plugin` | プラグインとマーケットプレイスの設定を検査する |
-| `make run-claude` | 手元のソースの MCP サーバーをつないで、Claude Code を起動する |
+| `make setup` | Installs the dependencies and downloads the OpenAPI specification from Apple. |
+| `make check` | Runs the same checks as CI (ESLint, formatting, type checks, and tests). |
+| `make download-openapi` | Downloads the current OpenAPI specification from Apple to `.local/` again. |
+| `make validate-plugin` | Validates the plugin and marketplace configuration. |
+| `make run-claude` | Starts Claude Code connected to the MCP server from your local source. |
 
-テストは、送るリクエストのパス・引数・値が、OpenAPI の仕様にあるかを確かめる。CI は毎回、Apple がいま配っている仕様を落として照らす。
+The tests check that the path, parameters, and values of each request exist in the OpenAPI specification. Each CI run downloads the current specification from Apple and checks against it.
 
-手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。このとき、書くツールは App Store Connect を変えず、送るはずだったリクエストをエラーで返す。本当に書いて試すときは、`ASC_READ_ONLY=0` も入れる。
+To test your local source against the real API, put the Issuer ID and the Key ID in the `ASC_ISSUER_ID` and `ASC_KEY_ID` environment variables, then run `make run-claude`. The plugin configuration does not reach a plugin that `claude --plugin-dir` loads. In this setup, tools that write do not change App Store Connect. Instead, they return the request they would have sent as an error. To write to App Store Connect, also set `ASC_READ_ONLY=0`.
