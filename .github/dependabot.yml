@@ -5,8 +5,8 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: "cron"
-      cronjob: "0 0 1,15 * *"
+      interval: 'cron'
+      cronjob: '0 0 1,15 * *'
     open-pull-requests-limit: 3
     groups:
       npm-minor-and-patch:
@@ -22,8 +22,8 @@ updates:
   - package-ecosystem: npm
     directory: /plugin
     schedule:
-      interval: "cron"
-      cronjob: "0 0 1,15 * *"
+      interval: 'cron'
+      cronjob: '0 0 1,15 * *'
     open-pull-requests-limit: 3
     groups:
       npm-minor-and-patch:
@@ -32,8 +32,8 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: "cron"
-      cronjob: "0 0 1,15 * *"
+      interval: 'cron'
+      cronjob: '0 0 1,15 * *'
     groups:
       github-actions:
         patterns: ['*']
