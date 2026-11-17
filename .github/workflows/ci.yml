@@ -2,6 +2,10 @@ name: CI
 
 on:
   pull_request:
+  # 検査は、Apple がいま配っている OpenAPI の仕様をそのつど落として照らす。PR が無くても、仕様が変わったら落ちて気付けるように流す
+  schedule:
+    - cron: '0 0 1,15 * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
