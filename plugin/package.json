@@ -1,9 +1,37 @@
 {
-  "name": "asc-mcp",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@ihideck/asc-mcp",
+  "version": "1.0.0",
   "description": "Unofficial MCP server for the App Store Connect API",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "app-store-connect",
+    "ios",
+    "release"
+  ],
+  "homepage": "https://github.com/iHideck/asc-mcp#readme",
+  "bugs": "https://github.com/iHideck/asc-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iHideck/asc-mcp.git",
+    "directory": "plugin"
+  },
+  "license": "MIT",
+  "author": "iHideck",
   "type": "module",
+  "bin": {
+    "asc-mcp": "dist/src/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepack": "tsc -p tsconfig.build.json && cp ../README.md ../LICENSE .",
+    "postpack": "rm README.md LICENSE"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=24"
   },

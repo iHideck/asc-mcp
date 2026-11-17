@@ -40,3 +40,8 @@ run-claude: # 手元のソースの MCP サーバーをつないで、Claude Cod
 validate-plugin: # プラグインとマーケットプレイスの設定を検査する
 	claude plugin validate .
 	claude plugin validate plugin
+
+.PHONY: pack-npm
+# npx は node_modules の下の .ts を動かせないので、npm に出す分だけ JS に変える
+pack-npm: # npm に出す tgz を plugin/ に作る（npx @ihideck/asc-mcp で動く形）
+	cd plugin && npm pack
