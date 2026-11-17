@@ -178,11 +178,11 @@ describe('setAppInfo', () => {
     const mismatched = fakeFetch(routes());
 
     await expect(set(typo, { primaryCategory: 'GAME' })).rejects.toThrow(
-      /primaryCategory に GAME は使えません[\s\S]*使えるカテゴリは GAMES、EDUCATION です/,
+      /primaryCategory cannot be GAME[\s\S]*The available categories are GAMES, EDUCATION\./,
     );
     await expect(
       set(mismatched, { primaryCategory: 'EDUCATION', primarySubcategoryOne: 'GAMES_TRIVIA' }),
-    ).rejects.toThrow(/GAMES_TRIVIA は使えません（EDUCATION のサブカテゴリではありません）/);
+    ).rejects.toThrow(/GAMES_TRIVIA \(it is not a subcategory of EDUCATION\)/);
     expect([...sentWrites(typo), ...sentWrites(mismatched)]).toEqual([]);
   });
 
@@ -198,7 +198,7 @@ describe('setAppInfo', () => {
     });
 
     await expect(set(live, { primaryCategory: 'GAMES' })).rejects.toThrow(
-      /App 情報（カテゴリ・年齢制限）に、いま編集できるものがありません/,
+      /Cannot change the categories and age rating because no App Information is editable now/,
     );
     await set(rightsOnly, { contentRightsDeclaration: 'USES_THIRD_PARTY_CONTENT' });
 
@@ -223,9 +223,9 @@ describe('setAppInfo', () => {
     const result = await set(fetchFn, { ageRating: { gambling: false } });
 
     expect(result.warnings).toEqual([
-      expect.stringMatching(/App Store の年齢が、まだ決まっていません[\s\S]*advertising/),
+      expect.stringMatching(/The App Store age rating is not set yet[\s\S]*advertising/),
     ]);
-    expect(result.warnings[0]).not.toContain('gambling、');
+    expect(result.warnings[0]).not.toContain('gambling,');
   });
 
   it('途中で失敗したら、済んだことを添えて返す', async () => {
@@ -247,7 +247,9 @@ describe('setAppInfo', () => {
         primaryCategory: 'GAMES',
         contentRightsDeclaration: 'USES_THIRD_PARTY_CONTENT',
       }),
-    ).rejects.toThrow(/^カテゴリを変えました。コンテンツ配信権を変えるところで止まりました。/);
+    ).rejects.toThrow(
+      /^Changed the categories\. Stopped while changing the content rights declaration\./,
+    );
   });
 
   it('年齢制限の項目とコンテンツ配信権の値が、Apple の仕様と同じ', () => {

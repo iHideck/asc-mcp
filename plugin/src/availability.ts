@@ -53,7 +53,7 @@ export async function setAvailability(
 ): Promise<SetAvailabilityResult> {
   if ((request.territories === undefined) === (request.sameAsApp === undefined)) {
     throw new Error(
-      'territories（国の ID の一覧）か sameAsApp（同じ国にするアプリ）の、どちらか一方を渡してください。',
+      'Pass either territories (a list of territory IDs) or sameAsApp (an app whose territories to match), but not both.',
     );
   }
   const app = await findApp(client, request.bundleId);
@@ -62,7 +62,7 @@ export async function setAvailability(
   const unknown = [...wanted.territories].filter((id) => !allTerritories.includes(id));
   if (unknown.length > 0) {
     throw new Error(
-      `国の ID ${unknown.join('、')} はありません。国の ID は、JPN・USA のような 3 文字です。何も変えていません。`,
+      `Unknown territory IDs: ${unknown.join(', ')}. A territory ID has three letters, such as JPN or USA. Nothing was changed.`,
     );
   }
   const read = () => readAvailability(client, app.appleId);
@@ -75,8 +75,8 @@ export async function setAvailability(
   if (before === null) {
     wrote = true;
     await progress.write(
-      `${wanted.territories.size} の国で配信する`,
-      `${wanted.territories.size} の国で配信するようにしました`,
+      `making the app available in ${wanted.territories.size} territories`,
+      `Made the app available in ${wanted.territories.size} territories`,
       () =>
         client.create(
           'appAvailabilities',
@@ -104,17 +104,17 @@ export async function setAvailability(
     ) {
       if (request.availableInNewTerritories !== undefined) {
         throw new Error(
-          '新しい国でも自動で配信するか（availableInNewTerritories）は、一度入れると API では変えられません。App Store Connect の「価格および配信状況」で変えてください。何も変えていません。',
+          'After availableInNewTerritories (whether the app becomes available in new territories automatically) is set, the API cannot change it. Change it in Pricing and Availability in App Store Connect. Nothing was changed.',
         );
       }
       warnings.push(
-        `新しい国でも自動で配信するかが、${request.sameAsApp ?? ''} と違います（${String(before.state.availableInNewTerritories)}）。変えるなら、App Store Connect の「価格および配信状況」で変えてください。`,
+        `Whether the app becomes available in new territories automatically differs from ${request.sameAsApp ?? ''} (${String(before.state.availableInNewTerritories)}). To change it, use Pricing and Availability in App Store Connect.`,
       );
     }
     const missing = [...wanted.territories].filter((id) => !before.territoryAvailabilities.has(id));
     if (missing.length > 0) {
       warnings.push(
-        `次の国は、このアプリの配信の一覧に無いので、変えていません: ${missing.join('、')}`,
+        `Did not change these territories because they are not in the availability list of this app: ${missing.join(', ')}`,
       );
     }
     for (const [territory, { id, available }] of before.territoryAvailabilities) {
@@ -122,14 +122,14 @@ export async function setAvailability(
       if (available !== shouldBe) {
         wrote = true;
         await progress.write(
-          `${territory} の配信を${shouldBe ? '始める' : 'やめる'}`,
-          `${territory} の配信を${shouldBe ? '始め' : 'やめ'}ました`,
+          `${shouldBe ? 'starting' : 'stopping'} availability in ${territory}`,
+          `${shouldBe ? 'Started' : 'Stopped'} availability in ${territory}`,
           () => client.update('territoryAvailabilities', id, { available: shouldBe }),
         );
       }
     }
   }
-  const after = wrote ? await progress.read('配信する国を読み直す', read) : before;
+  const after = wrote ? await progress.read('rereading the territories', read) : before;
   return { app, before: before?.state ?? null, after: after?.state ?? null, warnings };
 }
 
@@ -143,7 +143,7 @@ async function wantedTerritories(
   const source = await findApp(client, request.sameAsApp ?? '');
   const availability = await readAvailability(client, source.appleId);
   if (availability === null) {
-    throw new Error(`${source.bundleId} には、配信する国がまだありません。何も変えていません。`);
+    throw new Error(`${source.bundleId} has no territories yet. Nothing was changed.`);
   }
   return {
     territories: new Set(availability.state.territories),

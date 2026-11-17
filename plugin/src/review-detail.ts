@@ -22,10 +22,10 @@ const ReviewDetail = z.object({
 type ReviewDetailResource = z.infer<typeof ReviewDetail>;
 
 const CONTACT_FIELDS = {
-  contactFirstName: '名',
-  contactLastName: '姓',
-  contactPhone: '電話番号',
-  contactEmail: 'メール',
+  contactFirstName: 'first name',
+  contactLastName: 'last name',
+  contactPhone: 'phone number',
+  contactEmail: 'email',
 } as const;
 
 type ContactField = keyof typeof CONTACT_FIELDS;
@@ -81,15 +81,15 @@ export async function setReviewDetail(
   let after = before;
   if (Object.keys(changes).length > 0) {
     const what = [
-      changes.notes === undefined ? undefined : '審査メモ',
-      changes.demoAccountRequired === undefined ? undefined : 'サインインが要るか',
+      changes.notes === undefined ? undefined : 'the review notes',
+      changes.demoAccountRequired === undefined ? undefined : 'whether sign-in is required',
     ]
       .filter((part) => part !== undefined)
-      .join('・');
+      .join(' and ');
     const progress = trackProgress();
     await progress.write(
-      `版 ${versionString} の${what}を入れる`,
-      `版 ${versionString} の${what}を入れました`,
+      `setting ${what} for version ${versionString}`,
+      `Set ${what} for version ${versionString}`,
       async () => {
         if (before === null) {
           await client.create('appStoreReviewDetails', changes, {
@@ -100,7 +100,7 @@ export async function setReviewDetail(
         }
       },
     );
-    after = await progress.read('入れた審査の情報を読み直す', read);
+    after = await progress.read('reading the App Review information again after the change', read);
   }
   return {
     app,
@@ -134,7 +134,7 @@ export async function copyReviewContact(
   request: CopyReviewContactRequest,
 ): Promise<CopyReviewContactResult> {
   if (request.fromBundleId === request.bundleId) {
-    throw new Error('連絡先を写す元と写す先が、同じアプリです。');
+    throw new Error('The source and destination of the contact are the same app.');
   }
   const app = await findApp(client, request.bundleId);
   const version = pickEditableVersion(
@@ -156,8 +156,8 @@ export async function copyReviewContact(
     );
     const progress = trackProgress();
     await progress.write(
-      `版 ${versionString} に、審査の連絡先を写す`,
-      `版 ${versionString} に、審査の連絡先を写しました`,
+      `copying the App Review contact to version ${versionString}`,
+      `Copied the App Review contact to version ${versionString}`,
       () =>
         hidingValues(Object.values(contact.values), async () => {
           if (before === null) {
@@ -169,7 +169,7 @@ export async function copyReviewContact(
           }
         }),
     );
-    after = await progress.read('写した審査の情報を読み直す', read);
+    after = await progress.read('reading the App Review information again after the copy', read);
   }
   return {
     app,
@@ -210,7 +210,7 @@ async function sourceContact(
     }
   }
   throw new Error(
-    `${source.bundleId} の新しい ${SOURCE_VERSIONS_TO_SEARCH} つの版に、そろった審査の連絡先がありません。何も変えていません。`,
+    `None of the ${SOURCE_VERSIONS_TO_SEARCH} newest versions of ${source.bundleId} has a complete App Review contact. Nothing was changed.`,
   );
 }
 
@@ -223,7 +223,7 @@ async function hidingValues<T>(values: string[], work: () => Promise<T>): Promis
       .filter((value) => value !== '')
       .flatMap((value) => [value, JSON.stringify(value).slice(1, -1)]);
     const message = forms.reduce(
-      (text, value) => text.split(value).join('（伏せた）'),
+      (text, value) => text.split(value).join('(hidden)'),
       error instanceof Error ? error.message : String(error),
     );
     throw error instanceof AscApiError
@@ -254,7 +254,7 @@ function warningsFor(
 ): string[] {
   if (detail === null) {
     return [
-      'この版には、審査の情報がまだありません。審査に出す前に、連絡先（名前・電話番号・メール）を、copy_review_contact でほかのアプリの版から写すか、App Store Connect の画面で入れてください。',
+      'This version has no App Review information yet. Before you submit for App Review, copy the contact (name, phone number, and email) from a version of another app with copy_review_contact, or enter it in App Store Connect.',
     ];
   }
   const summary = summarize(detail);
@@ -262,15 +262,15 @@ function warningsFor(
   return [
     summary === null || summary.missingContact.length === 0
       ? undefined
-      : `審査の連絡先（${summary.missingContact.map((field) => CONTACT_FIELDS[field]).join('・')}）が入っていません。審査に出す前に、copy_review_contact でほかのアプリの版から写すか、App Store Connect の画面で入れてください。`,
+      : `The App Review contact is missing ${summary.missingContact.map((field) => CONTACT_FIELDS[field]).join(', ')}. Before you submit for App Review, copy the contact from a version of another app with copy_review_contact, or enter it in App Store Connect.`,
     attributes.demoAccountRequired === true && (attributes.demoAccountName ?? '') === ''
-      ? 'サインインが要るとしていますが、審査用のアカウントが入っていません。App Store Connect の画面で入れてください。'
+      ? 'Sign-in is required, but no demo account is set. Enter one in App Store Connect.'
       : undefined,
     notes === undefined || attributes.notes === notes
       ? undefined
-      : 'App Store Connect の値が、頼んだものと違います: 審査メモ（Apple が直したかもしれません）',
+      : 'The value in App Store Connect differs from the request: review notes (Apple might have modified them)',
     demoAccountRequired === undefined || attributes.demoAccountRequired === demoAccountRequired
       ? undefined
-      : 'App Store Connect の値が、頼んだものと違います: サインインが要るか',
+      : 'The value in App Store Connect differs from the request: whether sign-in is required',
   ].filter((text) => text !== undefined);
 }

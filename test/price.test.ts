@@ -145,7 +145,7 @@ describe('setFreePrice', () => {
       [PRICE_POINTS]: page([resource('appPricePoints', 'pp120', { customerPrice: '120' })]),
     });
 
-    await expect(set(fetchFn, 'XXX')).rejects.toThrow('XXX に、無料の価格の点がありません');
+    await expect(set(fetchFn, 'XXX')).rejects.toThrow('XXX has no free price point');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 });

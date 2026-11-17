@@ -53,7 +53,12 @@ export async function ensureVersion(
   const phasedRelease = firstRelease ? undefined : request.phasedRelease;
   const skipped =
     firstRelease && request.phasedRelease !== undefined
-      ? [{ field: 'phasedRelease', reason: '初めて出す版には、段階的リリースがありません' }]
+      ? [
+          {
+            field: 'phasedRelease',
+            reason: 'The first version of an app cannot use phased release',
+          },
+        ]
       : [];
   const warnings: string[] = [];
   const result = (before: VersionStatus | null, after: VersionStatus): EnsuredVersion => ({
@@ -71,10 +76,10 @@ export async function ensureVersion(
   const target = match ?? versions.find(isEditable);
   const progress = trackProgress();
   const reread = (id: string) =>
-    progress.read('変えた版を読み直す', async () => {
+    progress.read('reading the version again after the change', async () => {
       const version = (await read()).find((candidate) => candidate.id === id);
       if (version === undefined) {
-        throw new Error(`版 ${request.versionString} を、読み直せませんでした。`);
+        throw new Error(`Could not read version ${request.versionString} again.`);
       }
       return version;
     });
@@ -85,12 +90,12 @@ export async function ensureVersion(
     const blocking = versions.find((version) => !isEditable(version) && !isDistributed(version));
     if (blocking !== undefined) {
       throw new Error(
-        `版 ${blocking.status.versionString} が、いま ${blocking.status.state} なので、新しい版はまだ作れません。その版が公開されるか、審査から外して編集できるようになってから、もう一度呼んでください。`,
+        `You cannot create a new version yet because version ${blocking.status.versionString} is ${blocking.status.state}. Call again after that version is released, or after you remove it from App Review so that it is editable.`,
       );
     }
     id = await progress.write(
-      `版 ${request.versionString} を作る`,
-      `版 ${request.versionString} を作りました`,
+      `creating version ${request.versionString}`,
+      `Created version ${request.versionString}`,
       () =>
         client.create(
           'appStoreVersions',
@@ -121,14 +126,14 @@ export async function ensureVersion(
     if (Object.keys(changes).length > 0) {
       const what = describeChanges(changes);
       await progress.write(
-        `版 ${target.status.versionString} の${what}変える`,
-        `版 ${target.status.versionString} の${what}変えました`,
+        `setting ${what} for version ${target.status.versionString}`,
+        `Set ${what} for version ${target.status.versionString}`,
         () => client.update('appStoreVersions', target.id, changes),
       );
     }
     if (renamed && target.buildId !== null) {
       warnings.push(
-        `版の番号を ${target.status.versionString} から ${request.versionString} に変えましたが、選んであるビルド${target.status.build === null ? '' : ` ${target.status.build.buildNumber}`} は、前の番号のときのビルドです。select_build で、${request.versionString} のビルドを選び直してください。選び直すまで、審査に出さないでください。`,
+        `Changed the version number from ${target.status.versionString} to ${request.versionString}, but the selected build${target.status.build === null ? '' : ` ${target.status.build.buildNumber}`} was built for the previous number. Select a build for ${request.versionString} with select_build. Do not submit for App Review until you select it.`,
       );
     }
     id = target.id;
@@ -137,7 +142,7 @@ export async function ensureVersion(
 
   const versionId = id;
   if (phasedRelease === true && phasedReleaseId === null) {
-    await progress.write('段階的リリースを付ける', '段階的リリースを付けました', () =>
+    await progress.write('turning on phased release', 'Turned on phased release', () =>
       client.create(
         'appStoreVersionPhasedReleases',
         { phasedReleaseState: 'INACTIVE' },
@@ -146,7 +151,7 @@ export async function ensureVersion(
     );
   } else if (phasedRelease === false && phasedReleaseId !== null) {
     const removing = phasedReleaseId;
-    await progress.write('段階的リリースを外す', '段階的リリースを外しました', () =>
+    await progress.write('turning off phased release', 'Turned off phased release', () =>
       client.remove('appStoreVersionPhasedReleases', removing),
     );
   }
@@ -163,20 +168,22 @@ function parseRelease(
   if (releaseType === 'SCHEDULED') {
     if (earliestReleaseDate === undefined) {
       throw new Error(
-        'releaseType を SCHEDULED にするときは、公開する日時（earliestReleaseDate）が要ります。',
+        'Pass a release date (earliestReleaseDate) when you set releaseType to SCHEDULED.',
       );
     }
     const time = Date.parse(earliestReleaseDate);
     if (time % HOUR_MS !== 0) {
-      throw new Error('公開する日時（earliestReleaseDate）は、正時（分と秒が 0）にしてください。');
+      throw new Error(
+        'The release date (earliestReleaseDate) must be on the hour (0 minutes and 0 seconds).',
+      );
     }
     if (time <= now) {
-      throw new Error('公開する日時（earliestReleaseDate）が、もう過ぎています。');
+      throw new Error('The release date (earliestReleaseDate) is in the past.');
     }
     return { releaseType, earliestReleaseDate };
   }
   if (earliestReleaseDate !== undefined) {
-    throw new Error('earliestReleaseDate は、releaseType を SCHEDULED にするときだけ使えます。');
+    throw new Error('You can pass earliestReleaseDate only when you set releaseType to SCHEDULED.');
   }
   return releaseType === undefined ? undefined : { releaseType, earliestReleaseDate: null };
 }
@@ -200,22 +207,24 @@ function sameInstant(a: string | null, b: string | null): boolean {
 
 function describeChanges(changes: Attributes): string {
   return [
-    changes.versionString === undefined ? undefined : `番号を ${String(changes.versionString)} に`,
+    changes.versionString === undefined
+      ? undefined
+      : `the version number to ${String(changes.versionString)}`,
     changes.releaseType === undefined
       ? undefined
-      : `公開のしかたを ${String(changes.releaseType)} に`,
+      : `the release type to ${String(changes.releaseType)}`,
     changes.releaseType === undefined && typeof changes.earliestReleaseDate === 'string'
-      ? `公開の日時を ${changes.earliestReleaseDate} に`
+      ? `the release date to ${changes.earliestReleaseDate}`
       : undefined,
   ]
     .filter((part) => part !== undefined)
-    .join('、');
+    .join(' and ');
 }
 
 function usedNumberError(match: Version, versions: Version[]): Error {
   const newest = versions.find(isDistributed) ?? match;
   return new Error(
-    `版 ${match.status.versionString} は、公開したことのある番号です（${match.status.state}）。次に出す版は、${newest.status.versionString} より大きい番号にしてください。`,
+    `Version ${match.status.versionString} was already released (${match.status.state}). Use a number greater than ${newest.status.versionString} for the next version.`,
   );
 }
 
@@ -229,17 +238,17 @@ function differences(
   return [
     status.versionString === request.versionString
       ? undefined
-      : `版の番号が ${status.versionString} です（頼んだのは ${request.versionString}）`,
+      : `the version number is ${status.versionString} (requested: ${request.versionString})`,
     release === undefined || status.releaseType === release.releaseType
       ? undefined
-      : `公開のしかたが ${String(status.releaseType)} です（頼んだのは ${release.releaseType}）`,
+      : `the release type is ${String(status.releaseType)} (requested: ${release.releaseType})`,
     release === undefined || sameInstant(status.earliestReleaseDate, release.earliestReleaseDate)
       ? undefined
-      : `公開の日時が ${String(status.earliestReleaseDate)} です（頼んだのは ${String(release.earliestReleaseDate)}）`,
+      : `the release date is ${String(status.earliestReleaseDate)} (requested: ${String(release.earliestReleaseDate)})`,
     phasedRelease === undefined || phasedRelease === (after.phasedReleaseId !== null)
       ? undefined
-      : `段階的リリースが${after.phasedReleaseId === null ? '付いていません' : '付いています'}（頼んだのは${phasedRelease ? '使う' : '使わない'}）`,
+      : `phased release is ${after.phasedReleaseId === null ? 'off' : 'on'} (requested: ${phasedRelease ? 'on' : 'off'})`,
   ]
     .filter((text) => text !== undefined)
-    .map((text) => `App Store Connect の値が、頼んだものと違います: ${text}`);
+    .map((text) => `The value in App Store Connect differs from the request: ${text}`);
 }

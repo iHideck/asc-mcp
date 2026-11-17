@@ -16,12 +16,12 @@ describe('createClient', () => {
         { phasedReleaseState: 'INACTIVE' },
         { appStoreVersion: VERSION },
       ),
-    ).rejects.toThrow('送りませんでした: POST /v1/appStoreVersionPhasedReleases');
+    ).rejects.toThrow('read-only mode: POST /v1/appStoreVersionPhasedReleases');
     await expect(
       client.update('appStoreVersions', 'v1', { releaseType: 'MANUAL' }),
-    ).rejects.toThrow('送りませんでした: PATCH /v1/appStoreVersions/v1');
+    ).rejects.toThrow('read-only mode: PATCH /v1/appStoreVersions/v1');
     await expect(client.remove('appStoreVersionPhasedReleases', 'p1')).rejects.toThrow(
-      '送りませんでした: DELETE /v1/appStoreVersionPhasedReleases/p1',
+      'read-only mode: DELETE /v1/appStoreVersionPhasedReleases/p1',
     );
     await expect(
       client.upload(
@@ -35,7 +35,7 @@ describe('createClient', () => {
         new Uint8Array([1, 2, 3]),
       ),
     ).rejects.toThrow(
-      '送りませんでした: PUT https://store-001.blobstore.apple.com/s1/part1（3 バイト）',
+      'read-only mode: PUT https://store-001.blobstore.apple.com/s1/part1 (3 bytes)',
     );
     expect(fetchFn).not.toHaveBeenCalled();
   });
@@ -56,12 +56,12 @@ describe('createClient', () => {
 
     await expect(
       client.update('appStoreVersions', 'v1', { releaseType: 'MANUAL' }),
-    ).rejects.toThrow(/504[\s\S]*届いたかは分かりません/);
+    ).rejects.toThrow(/504[\s\S]*may or may not have reached App Store Connect/);
     const read = await listApps(client).catch((error: unknown) =>
       error instanceof Error ? error.message : '',
     );
     expect(read).toContain('504');
-    expect(read).not.toContain('届いたかは分かりません');
+    expect(read).not.toContain('may or may not have reached');
   });
 
   it('作ったものを応答から読めなければ、届いたか分からないことを添える', async () => {
@@ -75,7 +75,7 @@ describe('createClient', () => {
         { phasedReleaseState: 'INACTIVE' },
         { appStoreVersion: VERSION },
       ),
-    ).rejects.toThrow(/作ったものを読めませんでした[\s\S]*届いたかは分かりません/);
+    ).rejects.toThrow(/Could not read the created resource[\s\S]*may or may not have reached/);
   });
   it('Apple のエラーの associatedErrors も、項目ごとに返す', async () => {
     const fetchFn = fakeFetch({

@@ -143,7 +143,9 @@ describe('setReviewDetail', () => {
     ]);
     expect(result.before).toBeNull();
     expect(result.warnings).toEqual([
-      expect.stringContaining('審査の連絡先（名・姓・電話番号・メール）が入っていません'),
+      expect.stringContaining(
+        'The App Review contact is missing first name, last name, phone number, email',
+      ),
     ]);
   });
 
@@ -166,7 +168,9 @@ describe('setReviewDetail', () => {
     expect(requestedUrls(same).filter(({ pathname }) => pathname === DETAIL)).toHaveLength(1);
     expect(result.after).toEqual(result.before);
     expect(sentWrites(empty)).toEqual([]);
-    expect(nothing.warnings).toEqual([expect.stringContaining('審査の情報がまだありません')]);
+    expect(nothing.warnings).toEqual([
+      expect.stringContaining('has no App Review information yet'),
+    ]);
   });
 
   it('空の審査メモは、消すとして送る', async () => {
@@ -192,9 +196,7 @@ describe('setReviewDetail', () => {
 
     const result = await set(fetchFn, { demoAccountRequired: true });
 
-    expect(result.warnings).toEqual([
-      expect.stringContaining('審査用のアカウントが入っていません'),
-    ]);
+    expect(result.warnings).toEqual([expect.stringContaining('no demo account is set')]);
   });
 
   it('連絡先の値とパスワードは、読まず、返さない', async () => {
@@ -226,7 +228,7 @@ describe('setReviewDetail', () => {
     });
 
     await expect(set(fetchFn, { notes: 'メモ' })).rejects.toThrow(
-      /^版 1\.0\.2 の審査メモを入れました。入れた審査の情報を読み直すところで止まりました。/,
+      /^Set the review notes for version 1\.0\.2\. Stopped while reading the App Review information again after the change\./,
     );
   });
 
@@ -234,7 +236,7 @@ describe('setReviewDetail', () => {
     const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([live]) });
 
     await expect(set(fetchFn, { notes: 'メモ' })).rejects.toThrow(
-      /編集できる版[\s\S]*ensure_version/,
+      /No editable version exists[\s\S]*ensure_version/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });

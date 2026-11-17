@@ -83,7 +83,7 @@ export async function getLocalizations(
   const unknown = (locales ?? []).filter((locale) => !known.has(locale));
   if (unknown.length > 0) {
     throw new Error(
-      `言語 ${unknown.join('、')} の文はありません。ある言語は ${[...known].join('、')} です。`,
+      `No localized text exists for the locales ${unknown.join(', ')}. The available locales are ${[...known].join(', ')}.`,
     );
   }
   const wanted = ({ locale }: { locale: string }) =>
@@ -109,13 +109,11 @@ function pickVersion(versions: Version[], versionString: string | undefined): Ve
     return picked;
   }
   if (versionString === undefined) {
-    throw new Error('この platform には、版がありません。');
+    throw new Error('This platform has no versions.');
   }
-  const known = current
-    .map(({ status }) => `${status.versionString}（${status.state}）`)
-    .join('、');
+  const known = current.map(({ status }) => `${status.versionString} (${status.state})`).join(', ');
   throw new Error(
-    `版 ${versionString} はありません。${known === '' ? '' : `いまある版は ${known}です。`}`,
+    `Version ${versionString} does not exist.${known === '' ? '' : ` The current versions are ${known}.`}`,
   );
 }
 
@@ -166,7 +164,7 @@ export async function findEditableAppInfo(
   const editable = appInfos.find(({ state }) => EDITABLE_APP_INFO_STATES.includes(state));
   if (editable === undefined) {
     throw new Error(
-      `App 情報（${what}）に、いま編集できるものがありません（App 情報の状態: ${appInfos.map(({ state }) => state).join('、')}）。何も変えていません。`,
+      `Cannot change the ${what} because no App Information is editable now (App Information states: ${appInfos.map(({ state }) => state).join(', ')}). Nothing was changed.`,
     );
   }
   return editable;

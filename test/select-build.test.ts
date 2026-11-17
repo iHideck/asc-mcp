@@ -161,7 +161,7 @@ describe('selectBuild', () => {
     });
 
     await expect(select(fetchFn)).rejects.toThrow(
-      /1\.0\.2 のビルドがありません[\s\S]*CFBundleShortVersionString[\s\S]*get_release_status/,
+      /1\.0\.2 has no builds[\s\S]*CFBundleShortVersionString[\s\S]*get_release_status/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -176,7 +176,7 @@ describe('selectBuild', () => {
     });
 
     await expect(select(fetchFn, { buildNumber: '13' })).rejects.toThrow(
-      'この版のビルドは 12・11 です',
+      'The builds for this version are 12, 11.',
     );
   });
 
@@ -195,8 +195,8 @@ describe('selectBuild', () => {
     });
 
     await expect(select(fetchFn, { buildNumber: '13' })).rejects.toThrow(/PROCESSING/);
-    await expect(select(fetchFn, { buildNumber: '12' })).rejects.toThrow(/期限が切れています/);
-    await expect(select(fetchFn, { buildNumber: '11' })).rejects.toThrow(/内部テスト専用/);
+    await expect(select(fetchFn, { buildNumber: '12' })).rejects.toThrow(/expired/);
+    await expect(select(fetchFn, { buildNumber: '11' })).rejects.toThrow(/internal testing only/);
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -218,7 +218,7 @@ describe('selectBuild', () => {
     const result = await select(fetchFn);
 
     expect(sentWrites(fetchFn)).toHaveLength(1);
-    expect(result.warnings).toEqual([expect.stringContaining('輸出コンプライアンス')]);
+    expect(result.warnings).toEqual([expect.stringContaining('export compliance')]);
   });
 
   it('編集できる版が無ければ、版を用意するよう返し、審査中の版には選ばない', async () => {
@@ -228,9 +228,9 @@ describe('selectBuild', () => {
       [VERSIONS]: [page([live]), page([waiting, live])],
     });
 
-    await expect(select(fetchFn)).rejects.toThrow(/編集できる版[\s\S]*ensure_version/);
+    await expect(select(fetchFn)).rejects.toThrow(/No editable version[\s\S]*ensure_version/);
     await expect(select(fetchFn, { versionString: '1.0.2' })).rejects.toThrow(
-      /1\.0\.2 は、いま WAITING_FOR_REVIEW なので変えられません/,
+      /Cannot change version 1\.0\.2 because its state is WAITING_FOR_REVIEW/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -249,7 +249,7 @@ describe('selectBuild', () => {
     const result = await select(fetchFn);
 
     expect(result.warnings).toEqual([
-      'App Store Connect の値が、頼んだものと違います: 選んであるビルドが 無し です（頼んだのは 12）',
+      'The value in App Store Connect differs from the requested value: the selected build is none (requested: 12)',
     ]);
   });
 
@@ -265,7 +265,7 @@ describe('selectBuild', () => {
     });
 
     await expect(select(fetchFn)).rejects.toThrow(
-      /^版 1\.0\.2 にビルド 12 を選びました。選んだ版を読み直すところで止まりました。/,
+      /^Selected build 12 for version 1\.0\.2\. Stopped while rereading the version\./,
     );
   });
 

@@ -165,12 +165,12 @@ describe('setLocalizations', () => {
 
     await expect(result).rejects.toThrow(
       [
-        '入れる前に確かめたら、合わない所がありました。何も変えていません。',
-        '- 言語 ja が2回以上あります。1つにまとめてください',
-        '- ja のプロモーション用テキスト: 171 文字（170 文字まで）',
-        '- ja の名前: 31 文字（30 文字まで）',
-        '- en-US のサポート URL: http か https の URL ではありません',
-        '- en-US のマーケティング URL: http か https の URL ではありません',
+        'The check before writing found problems. Nothing was changed.',
+        '- Locale ja appears more than once. Merge the entries into one',
+        '- Promotional Text for ja: 171 characters (limit: 170)',
+        '- Name for ja: 31 characters (limit: 30)',
+        '- Support URL for en-US: not an http or https URL',
+        '- Marketing URL for en-US: not an http or https URL',
       ].join('\n'),
     );
     expect(fetchFn).not.toHaveBeenCalled();
@@ -189,7 +189,7 @@ describe('setLocalizations', () => {
 
     await expect(
       set(fakeFetch({}), [{ locale: 'ja', keywords: '点'.repeat(101) }]),
-    ).rejects.toThrow('101 文字（100 文字まで）');
+    ).rejects.toThrow('101 characters (limit: 100)');
     await set(fetchFn, [{ locale: 'ja', keywords: '点'.repeat(100) }]);
 
     expect(sentWrites(fetchFn)).toEqual([
@@ -210,7 +210,7 @@ describe('setLocalizations', () => {
         { locale: 'fr-FR', description: 'Inspection' },
       ]),
     ).rejects.toThrow(
-      /言語 fr-FR の、版の文はありません。版の言語は ja、en-US です[\s\S]*画面で行ってください/,
+      /No version text exists for locale fr-FR\. The version locales are ja, en-US[\s\S]*Add locales in App Store Connect/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -234,7 +234,7 @@ describe('setLocalizations', () => {
       patch('appStoreVersionLocalizations', 'lja', { promotionalText: '新しくなりました' }),
     ]);
     expect(result.skipped).toEqual([
-      { locale: 'ja', field: 'whatsNew', reason: expect.stringContaining('初めて出す版') },
+      { locale: 'ja', field: 'whatsNew', reason: expect.stringContaining('first release') },
     ]);
   });
 
@@ -248,7 +248,9 @@ describe('setLocalizations', () => {
 
     await expect(
       set(fetchFn, [{ locale: 'ja', keywords: '点検', name: 'ひけし 点検' }]),
-    ).rejects.toThrow(/いま編集できるものがありません（App 情報の状態: READY_FOR_DISTRIBUTION）/);
+    ).rejects.toThrow(
+      /no App Information is editable now \(App Information states: READY_FOR_DISTRIBUTION\)/,
+    );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -304,7 +306,7 @@ describe('setLocalizations', () => {
     ];
 
     await expect(set(failing, texts)).rejects.toThrow(
-      /^ja のキーワードを変えました。en-US のキーワードを変えるところで止まりました。同じ呼び出しをやり直すと、残りだけを行います。\n[\s\S]*500/,
+      /^Updated the Keywords for ja\. Stopped while updating the Keywords for en-US\. Make the same call again to do only the rest\.\n[\s\S]*500/,
     );
     await set(retrying, texts);
 
@@ -327,7 +329,7 @@ describe('setLocalizations', () => {
     const result = await set(fetchFn, [{ locale: 'ja', promotionalText: '新しくなりました。\n' }]);
 
     expect(result.warnings).toEqual([
-      expect.stringContaining('頼んだものと違います: ja のプロモーション用テキスト'),
+      expect.stringContaining('differs from the requested value: Promotional Text for ja'),
     ]);
   });
 

@@ -2,7 +2,7 @@
   "name": "asc-mcp",
   "version": "0.0.0",
   "private": true,
-  "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）",
+  "description": "Unofficial MCP server for the App Store Connect API",
   "type": "module",
   "engines": {
     "node": ">=24"

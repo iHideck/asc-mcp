@@ -49,7 +49,7 @@ export async function releaseVersion(
     versions,
     request.versionString,
     ({ status }) => status.state === PENDING_RELEASE_STATE,
-    '公開を待っている版（審査が通り、手動の公開を待っている版）がありません。',
+    'No version is waiting for release (passed App Review and waiting for a manual release).',
   );
   const result = (after: VersionStatus): ReleaseResult => ({
     app,
@@ -63,19 +63,21 @@ export async function releaseVersion(
   }
   if (version.status.state !== PENDING_RELEASE_STATE) {
     throw new Error(
-      `版 ${version.status.versionString} は、いま ${version.status.state} なので公開できません。公開できるのは、審査が通り、手動の公開を待っている版（${PENDING_RELEASE_STATE}）です。`,
+      `You cannot release version ${version.status.versionString} because it is ${version.status.state}. You can release only a version that passed App Review and is waiting for a manual release (${PENDING_RELEASE_STATE}).`,
     );
   }
   const name = version.status.versionString;
   const progress = trackProgress();
-  await progress.write(`版 ${name} を公開する`, `版 ${name} を公開しました`, () =>
+  await progress.write(`releasing version ${name}`, `Released version ${name}`, () =>
     client.create(
       'appStoreVersionReleaseRequests',
       {},
       { appStoreVersion: { type: 'appStoreVersions', id: version.id } },
     ),
   );
-  return result(await progress.read('公開した版を読み直す', () => reread(read, version.id)));
+  return result(
+    await progress.read('reading the released version again', () => reread(read, version.id)),
+  );
 }
 
 export async function setPhasedRelease(
@@ -89,12 +91,12 @@ export async function setPhasedRelease(
     versions,
     request.versionString,
     ({ status }) => RUNNING_PHASED_STATES.includes(status.phasedRelease?.state ?? ''),
-    '段階的リリースを進めている版がありません。',
+    'No version has a phased release in progress.',
   );
   const name = version.status.versionString;
   const current = version.status.phasedRelease?.state;
   if (version.phasedReleaseId === null || current === undefined) {
-    throw new Error(`版 ${name} には、段階的リリースがありません。`);
+    throw new Error(`Version ${name} has no phased release.`);
   }
   const target = PHASED_RELEASE_TARGETS[request.action];
   const result = (after: VersionStatus): ReleaseResult => ({
@@ -110,21 +112,25 @@ export async function setPhasedRelease(
   if (!RUNNING_PHASED_STATES.includes(current)) {
     throw new Error(
       current === 'INACTIVE'
-        ? `版 ${name} の段階的リリースは、まだ始まっていません。版が公開されると始まります。`
-        : `版 ${name} の段階的リリースは、もう終わっています（${current}）。`,
+        ? `The phased release of version ${name} has not started yet. It starts when the version is released.`
+        : `The phased release of version ${name} has already ended (${current}).`,
     );
   }
   const phasedReleaseId = version.phasedReleaseId;
   const progress = trackProgress();
   await progress.write(
-    `版 ${name} の段階的リリースを ${target} にする`,
-    `版 ${name} の段階的リリースを ${target} にしました`,
+    `setting the phased release of version ${name} to ${target}`,
+    `Set the phased release of version ${name} to ${target}`,
     () =>
       client.update('appStoreVersionPhasedReleases', phasedReleaseId, {
         phasedReleaseState: target,
       }),
   );
-  return result(await progress.read('変えた版を読み直す', () => reread(read, version.id)));
+  return result(
+    await progress.read('reading the version again after the change', () =>
+      reread(read, version.id),
+    ),
+  );
 }
 
 function pick(
@@ -139,7 +145,7 @@ function pick(
       : versions.find(({ status }) => status.versionString === versionString);
   if (version === undefined) {
     throw new Error(
-      versionString === undefined ? noneMessage : `版 ${versionString} はありません。`,
+      versionString === undefined ? noneMessage : `Version ${versionString} does not exist.`,
     );
   }
   return version;
@@ -148,7 +154,7 @@ function pick(
 async function reread(read: () => Promise<Version[]>, id: string): Promise<VersionStatus> {
   const version = (await read()).find((candidate) => candidate.id === id);
   if (version === undefined) {
-    throw new Error('版を、読み直せませんでした。');
+    throw new Error('Could not read the version again.');
   }
   return version.status;
 }

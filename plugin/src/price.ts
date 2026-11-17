@@ -55,11 +55,11 @@ export async function setFreePrice(
   const free = data.find(({ attributes }) => isFree(attributes.customerPrice));
   if (free === undefined) {
     throw new Error(
-      `${request.baseTerritory} に、無料の価格の点がありません。国の ID（例: JPN）を確かめてください。`,
+      `${request.baseTerritory} has no free price point. Check the territory ID (for example, JPN).`,
     );
   }
   const progress = trackProgress();
-  await progress.write('価格を無料にする', '価格を無料にしました', () =>
+  await progress.write('setting the price to free', 'Set the price to free', () =>
     client.create(
       'appPriceSchedules',
       {},
@@ -78,7 +78,7 @@ export async function setFreePrice(
       ],
     ),
   );
-  return { app, before, after: await progress.read('入れた価格を読み直す', read) };
+  return { app, before, after: await progress.read('rereading the price', read) };
 }
 
 async function readPrice(

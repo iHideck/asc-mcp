@@ -201,18 +201,18 @@ export async function replaceScreenshots(
       pending.length === 0
         ? []
         : [
-            `Apple が、まだ写真（${pending.join('、')}）を処理しているので、ここで止めました。数分たってから同じ呼び出しをやり直すと、続きを行います。`,
+            `Stopped here because Apple is still processing screenshots (${pending.join(', ')}). Make the same call again in a few minutes to do the rest.`,
           ],
   });
   const kept = slots.flatMap(({ existing }) => existing?.id ?? []);
   if (missing.length === 0 && remove.length === 0 && sameOrder(before, kept)) {
     return result(before, []);
   }
-  const where = `版 ${versionString} の ${locale} の ${displayType} の欄`;
+  const where = `the ${displayType} screenshot set for ${locale} of version ${versionString}`;
   const progress = trackProgress();
   const setId =
     existingSetId ??
-    (await progress.write(`${where}を作る`, `${where}を作りました`, () =>
+    (await progress.write(`creating ${where}`, `Created ${where}`, () =>
       client.create(
         'appScreenshotSets',
         { screenshotDisplayType: displayType },
@@ -226,15 +226,15 @@ export async function replaceScreenshots(
       uploadedIds.set(
         file,
         await progress.write(
-          `写真 ${file.fileName} を上げる`,
-          `写真 ${file.fileName} を上げました`,
+          `uploading screenshot ${file.fileName}`,
+          `Uploaded screenshot ${file.fileName}`,
           () => uploadScreenshot(client, setId, file),
         ),
       );
     }
   };
   const settle = () =>
-    progress.read('Apple が写真を処理し終えるのを待つ', () =>
+    progress.read('waiting for Apple to finish processing the screenshots', () =>
       waitForUploads(client, setId, new Set(uploadedIds.values()), wait),
     );
   // 欄に入る分を先に上げ、Apple が受け付けたのを確かめてから、要らない写真を消す
@@ -248,7 +248,7 @@ export async function replaceScreenshots(
   }
   for (const screenshot of remove) {
     const name = nameOf(screenshot);
-    await progress.write(`写真 ${name} を消す`, `写真 ${name} を消しました`, () =>
+    await progress.write(`deleting screenshot ${name}`, `Deleted screenshot ${name}`, () =>
       client.remove('appScreenshots', screenshot.id),
     );
   }
@@ -261,16 +261,21 @@ export async function replaceScreenshots(
   if (sameOrder(screenshots, order)) {
     return result(screenshots, remove);
   }
-  await progress.write(`${where}の写真を、渡した順に並べる`, `${where}の写真を並べました`, () =>
-    client.setRelationship(
-      'appScreenshotSets',
-      setId,
-      'appScreenshots',
-      order.map((id) => ({ type: 'appScreenshots', id })),
-    ),
+  await progress.write(
+    `ordering the screenshots in ${where} as passed`,
+    `Ordered the screenshots in ${where}`,
+    () =>
+      client.setRelationship(
+        'appScreenshotSets',
+        setId,
+        'appScreenshots',
+        order.map((id) => ({ type: 'appScreenshots', id })),
+      ),
   );
   return result(
-    await progress.read('並べたあとの写真を読む', () => readScreenshots(client, setId)),
+    await progress.read('reading the screenshots after ordering', () =>
+      readScreenshots(client, setId),
+    ),
     remove,
   );
 }
@@ -287,7 +292,7 @@ async function readScreenshotFiles(
   if (problems.length > 0) {
     throw new Error(
       [
-        `次の写真は ${displayType}（${label}）の欄に入れられないので、何も変えていません。この欄が受け付ける大きさは ${sizes.join('・')} です。`,
+        `Nothing was changed because the following screenshots do not fit display type ${displayType} (${label}). This display type accepts ${sizes.join(', ')}.`,
         ...problems,
       ].join('\n'),
     );
@@ -300,23 +305,25 @@ async function checkFile(
   sizes: string[],
 ): Promise<{ file: ScreenshotFile } | { problem: string }> {
   if (!isAbsolute(path)) {
-    return { problem: '絶対パスで渡してください' };
+    return { problem: 'Pass an absolute path' };
   }
   let bytes: Buffer<ArrayBuffer>;
   try {
     bytes = await readFile(path);
   } catch (error) {
     const code = error instanceof Error && 'code' in error ? String(error.code) : String(error);
-    return { problem: code === 'ENOENT' ? 'ファイルがありません' : `読めません（${code}）` };
+    return {
+      problem: code === 'ENOENT' ? 'The file does not exist' : `Cannot read the file (${code})`,
+    };
   }
   const size = imageSize(bytes);
   if (size === undefined) {
-    return { problem: 'PNG か JPEG の写真として、大きさを読めません' };
+    return { problem: 'Cannot read the size as a PNG or JPEG image' };
   }
   if (!sizes.includes(size)) {
     const fits = DISPLAY_TYPE_NAMES.filter((name) => DISPLAY_TYPES[name].sizes.includes(size));
     return {
-      problem: `${size} は、この欄の大きさではありません${fits.length === 0 ? '' : `（${fits.join('・')} の欄の大きさです）`}`,
+      problem: `${size} is not a size for this display type${fits.length === 0 ? '' : ` (it fits ${fits.join(', ')})`}`,
     };
   }
   // Apple は、上げたファイルの MD5 を sourceFileChecksum に返す。同じ写真かを、これで見分ける
@@ -363,7 +370,7 @@ async function findLocalization(
   const found = localizations.find(({ attributes }) => attributes.locale === locale);
   if (found === undefined) {
     throw new Error(
-      `版 ${versionString} に、言語 ${locale} はありません。ある言語は ${localizations.map(({ attributes }) => attributes.locale).join('、')} です。`,
+      `Version ${versionString} has no locale ${locale}. The available locales are ${localizations.map(({ attributes }) => attributes.locale).join(', ')}.`,
     );
   }
   return found.id;
@@ -403,7 +410,7 @@ async function readSettledScreenshots(
     .map(nameOf);
   if (processing.length > 0) {
     throw new Error(
-      `Apple が、まだ写真（${processing.join('、')}）を処理しているので、何も変えていません。数分たってから、同じ呼び出しをやり直してください。`,
+      `Nothing was changed because Apple is still processing screenshots (${processing.join(', ')}). Make the same call again in a few minutes.`,
     );
   }
   return screenshots;
@@ -474,7 +481,7 @@ async function waitForUploads(
   if (failed.length > 0) {
     throw new Error(
       [
-        'Apple が、次の写真を受け付けませんでした。写真を直してから、同じ呼び出しをやり直してください。',
+        'Apple did not accept the following screenshots. Fix them, then make the same call again.',
         ...failed.map(describeFailure),
       ].join('\n'),
     );
@@ -498,7 +505,7 @@ function describeFailure(screenshot: ScreenshotResource): string {
   const reasons = (screenshot.attributes.assetDeliveryState?.errors ?? []).map(
     ({ code, description }) => [code, description].filter(Boolean).join(': '),
   );
-  return `- ${nameOf(screenshot)}: ${reasons.length === 0 ? '理由は返ってきませんでした' : reasons.join('、')}`;
+  return `- ${nameOf(screenshot)}: ${reasons.length === 0 ? 'No reason was returned' : reasons.join(', ')}`;
 }
 
 function nameOf({ id, attributes }: ScreenshotResource): string {

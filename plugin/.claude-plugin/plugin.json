@@ -1,22 +1,22 @@
 {
   "name": "asc-mcp",
-  "description": "App Store Connect API を呼ぶ MCP サーバー（非公式）。App Store へのリリース作業を、Claude Code に頼めるようにする",
+  "description": "Unofficial MCP server for the App Store Connect API. Lets Claude Code prepare, submit, and release your App Store versions.",
   "author": { "name": "iHideck", "url": "https://github.com/iHideck" },
   "homepage": "https://github.com/iHideck/asc-mcp",
   "repository": "https://github.com/iHideck/asc-mcp",
-  "keywords": ["app-store-connect", "ios", "release"],
+  "keywords": ["app-store-connect", "ios", "release", "mcp"],
   "userConfig": {
     "issuer_id": {
       "type": "string",
       "title": "Issuer ID",
-      "description": "App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」のページに出る Issuer ID",
+      "description": "The Issuer ID shown in App Store Connect under Users and Access > Integrations > App Store Connect API",
       "required": true,
       "sensitive": true
     },
     "key_id": {
       "type": "string",
       "title": "Key ID",
-      "description": "同じページの、作った API キーの Key ID。秘密鍵は ~/.appstoreconnect/private_keys/AuthKey_<Key ID>.p8 に置く",
+      "description": "The Key ID of your API key on the same page. Put the private key at ~/.appstoreconnect/private_keys/AuthKey_<Key ID>.p8",
       "required": true,
       "sensitive": true
     }

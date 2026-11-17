@@ -25,13 +25,13 @@ export type BuildResource = z.infer<typeof Build>;
 
 export function unusableReason({ attributes }: BuildResource): string | undefined {
   if (attributes.processingState !== 'VALID') {
-    return `処理の状態が ${attributes.processingState} です。処理が済む（VALID になる）のを待ってください。`;
+    return `The processing state is ${attributes.processingState}. Wait until processing finishes (the state becomes VALID).`;
   }
   if (attributes.expired) {
-    return '期限が切れています。新しいビルドを上げて、選び直してください。';
+    return 'The build has expired. Upload a new build, then select it again.';
   }
   if (attributes.buildAudienceType === 'INTERNAL_ONLY') {
-    return 'TestFlight の内部テスト専用のビルドなので、App Store には出せません。App Store に出せるビルドを上げて、選び直してください。';
+    return 'The build is for TestFlight internal testing only, so you cannot submit it to the App Store. Upload a build that you can submit to the App Store, then select it again.';
   }
   return undefined;
 }

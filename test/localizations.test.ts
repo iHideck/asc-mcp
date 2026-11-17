@@ -170,7 +170,9 @@ describe('getLocalizations', () => {
           locales: ['ja-JP', 'ja'],
         },
       ),
-    ).rejects.toThrow('言語 ja-JP の文はありません。ある言語は ja、en-US です。');
+    ).rejects.toThrow(
+      'No localized text exists for the locales ja-JP. The available locales are ja, en-US.',
+    );
   });
 
   it('無い版を指すと、いまある版を添えて返す', async () => {
@@ -186,7 +188,7 @@ describe('getLocalizations', () => {
         },
       ),
     ).rejects.toThrow(
-      '版 2.0.0 はありません。いまある版は 1.0.1（PREPARE_FOR_SUBMISSION）、1.0.0（READY_FOR_DISTRIBUTION）です。',
+      'Version 2.0.0 does not exist. The current versions are 1.0.1 (PREPARE_FOR_SUBMISSION), 1.0.0 (READY_FOR_DISTRIBUTION).',
     );
   });
 

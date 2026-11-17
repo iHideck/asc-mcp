@@ -17,7 +17,7 @@ export class ConfigError extends Error {
 }
 
 const SETUP_HINT =
-  '/plugin configure asc-mcp@asc-mcp で Issuer ID と Key ID を入れてから、Claude Code を起動し直してください。';
+  'Enter the Issuer ID and Key ID with /plugin configure asc-mcp@asc-mcp, then restart Claude Code.';
 
 const AUDIENCE = 'appstoreconnect-v1';
 // Apple は、有効期限が20分より先のトークンを受け付けない
@@ -43,7 +43,7 @@ export async function loadCredentials(
       ...(keyId.success ? [] : ['Key ID']),
     ];
     throw new ConfigError(
-      `${missing.join(' と ')} が、設定されていないか、形が違います。${SETUP_HINT}`,
+      `${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not set or ${missing.length === 1 ? 'has' : 'have'} the wrong format. ${SETUP_HINT}`,
     );
   }
 
@@ -53,7 +53,7 @@ export async function loadCredentials(
     pem = await readFile(path, 'utf8');
   } catch {
     throw new ConfigError(
-      `秘密鍵のファイル ${path} を読めません。App Store Connect からダウンロードした .p8 のファイルを、このパスに置いてください。`,
+      `Cannot read the private key file ${path}. Put the .p8 file that you downloaded from App Store Connect at this path.`,
     );
   }
   let privateKey: KeyObject;
@@ -61,7 +61,7 @@ export async function loadCredentials(
     privateKey = createPrivateKey(pem);
   } catch {
     throw new ConfigError(
-      `${path} を秘密鍵として読めません。App Store Connect からダウンロードしたファイルかを確かめてください。`,
+      `Cannot read ${path} as a private key. Check that it is the file that you downloaded from App Store Connect.`,
     );
   }
   return { issuerId: issuerId.data, keyId: keyId.data, privateKey };

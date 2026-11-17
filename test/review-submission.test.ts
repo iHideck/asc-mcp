@@ -275,7 +275,7 @@ describe('submitForReview', () => {
     await submitForReview(client(retrying), request);
 
     expect(message).toMatch(
-      /^審査への提出を作りました。提出に版 1\.0\.2 を入れました。版 1\.0\.2 を審査に出すところで止まりました。エラーの所を直してから、/,
+      /^Created the App Review submission\. Added version 1\.0\.2 to the submission\. Stopped while submitting version 1\.0\.2 for App Review\. Fix the problem in the error, then /,
     );
     expect(message).toContain('ENTITY_ERROR.ATTRIBUTE.REQUIRED');
     expect(routesOf(retrying)).toEqual(['PATCH /v1/reviewSubmissions/s1']);
@@ -351,7 +351,7 @@ describe('submitForReview', () => {
     });
 
     await expect(submitForReview(client(fetchFn), request)).rejects.toThrow(
-      /版 1\.0\.2 のほかに 1 件（App 内課金など）が入っていて[\s\S]*何も変えていません/,
+      /1 other item \(such as in-app purchases\) besides version 1\.0\.2[\s\S]*Nothing was changed/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -364,18 +364,22 @@ describe('submitForReview', () => {
       [ITEMS]: items('READY_FOR_REVIEW:v102'),
     });
 
-    await expect(submitForReview(client(fetchFn), request)).rejects.toThrow('取り下げの最中です');
+    await expect(submitForReview(client(fetchFn), request)).rejects.toThrow('is being withdrawn');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
   it('出す前にビルドを確かめ、出せなければ、理由を返して何も送らない', async () => {
     const cases: [boolean, BuildFields, RegExp][] = [
-      [false, {}, /ビルドが選んでありません[\s\S]*select_build/],
-      [true, { preReleaseVersion: '1.0.1' }, /版は 1\.0\.1 で、版の番号 1\.0\.2 と違います/],
-      [true, { processingState: 'PROCESSING' }, /PROCESSING[\s\S]*待ってください/],
-      [true, { expired: true }, /期限が切れています/],
-      [true, { buildAudienceType: 'INTERNAL_ONLY' }, /内部テスト専用/],
-      [true, { usesNonExemptEncryption: null }, /輸出コンプライアンス/],
+      [false, {}, /has no selected build[\s\S]*select_build/],
+      [
+        true,
+        { preReleaseVersion: '1.0.1' },
+        /is for version 1\.0\.1, which differs from the version number 1\.0\.2/,
+      ],
+      [true, { processingState: 'PROCESSING' }, /PROCESSING[\s\S]*Wait until processing finishes/],
+      [true, { expired: true }, /has expired/],
+      [true, { buildAudienceType: 'INTERNAL_ONLY' }, /internal testing only/],
+      [true, { usesNonExemptEncryption: null }, /export compliance/],
     ];
     for (const [selected, build, message] of cases) {
       const fetchFn = fakeFetch({
@@ -399,7 +403,7 @@ describe('submitForReview', () => {
 
     await expect(
       submitForReview(client(fetchFn), { ...request, versionString: '1.0.2' }),
-    ).rejects.toThrow('公開したことのある版です');
+    ).rejects.toThrow('was already released');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -426,7 +430,7 @@ describe('submitForReview', () => {
     });
 
     await expect(submitForReview(client(failing), request)).rejects.toThrow(
-      /^審査への提出を作りました。提出に版 1\.0\.2 を入れるところで止まりました。同じ呼び出しをやり直すと/,
+      /^Created the App Review submission\. Stopped while adding version 1\.0\.2 to the submission\. Make the same call again/,
     );
     await submitForReview(client(retrying), request);
 
@@ -510,7 +514,7 @@ describe('cancelReview', () => {
     });
 
     await expect(cancelReview(client(fetchFn), request)).rejects.toThrow(
-      /まだ出していない審査への提出に入っています[\s\S]*submit_for_review/,
+      /in an App Review submission that is not submitted yet[\s\S]*submit_for_review/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -524,7 +528,7 @@ describe('cancelReview', () => {
     });
 
     await expect(cancelReview(client(fetchFn), request)).rejects.toThrow(
-      /ほかに 1 件（App 内課金など）[\s\S]*一緒に取り下げます/,
+      /1 other item \(such as in-app purchases\)[\s\S]*withdrawn together/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
