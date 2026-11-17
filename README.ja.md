@@ -44,6 +44,34 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 
 4. 設定の画面で、Issuer ID と Key ID を入れる。あとから直すときは、`/plugin configure asc-mcp@asc-mcp` を打つ
 
+## ほかの MCP クライアントで使う
+
+MCP サーバーは、Claude Desktop や Cursor など、ほかの MCP クライアントでも動く。スキル `release` は、Claude Code でだけ使える。
+
+1. [入れ方](#入れ方)の 1 と 2 を済ませる
+2. クライアントの MCP の設定に、サーバーを足す。Claude Desktop は「設定」→「開発者」→「設定を編集」、Cursor は `~/.cursor/mcp.json` を開く
+
+   ```json
+   {
+     "mcpServers": {
+       "asc": {
+         "command": "npx",
+         "args": ["-y", "@ihideck/asc-mcp"],
+         "env": {
+           "ASC_ISSUER_ID": "<Issuer ID>",
+           "ASC_KEY_ID": "<Key ID>"
+         }
+       }
+     }
+   }
+   ```
+
+3. クライアントを起動し直す。ツールの一覧に `list_apps` が出れば、つながっている
+
+ソースから動かすときは、`git clone https://github.com/iHideck/asc-mcp.git` と `npm ci --prefix asc-mcp/plugin` を打ち、`"command": "node"`・`"args": ["/絶対パス/asc-mcp/plugin/src/index.ts"]` にする。
+
+審査に出す・公開する・価格や配信する国を変えるツールで確認を出すのは、Claude Code だけ。ほかのクライアントでは、それらのツールを呼ぶ前に確認を出すよう、クライアントを設定する。書くツールが送らずにリクエストを返すようにするには、`env` に `"ASC_READ_ONLY": "1"` を足す。
+
 ## 開発
 
 プラグインは `plugin/` にある。Claude Code がプラグインと一緒に入れるのは、`plugin/package.json` の依存だけ。ESLint などの開発の道具は、ルートの `package.json` に置く。
@@ -55,7 +83,16 @@ MCP サーバーは、PATH にある Node（24 以上）で動く。
 | `make download-openapi` | Apple がいま配っている OpenAPI の仕様を、`.local/` に落とし直す |
 | `make validate-plugin` | プラグインとマーケットプレイスの設定を検査する |
 | `make run-claude` | 手元のソースの MCP サーバーをつないで、Claude Code を起動する |
+| `make pack-npm` | npm に出すパッケージ（`@ihideck/asc-mcp`）を、`plugin/` に `.tgz` で作る |
 
 テストは、送るリクエストのパス・引数・値が、OpenAPI の仕様にあるかを確かめる。CI は毎回、Apple がいま配っている仕様を落として照らす。
 
 手元のソースを本物の API で試すときは、Issuer ID と Key ID を環境変数 `ASC_ISSUER_ID` と `ASC_KEY_ID` に入れてから、`make run-claude` を打つ。プラグインの設定は、`claude --plugin-dir` で読んだプラグインには渡らない。このとき、書くツールは App Store Connect を変えず、送るはずだったリクエストをエラーで返す。本当に書いて試すときは、`ASC_READ_ONLY=0` も入れる。
+
+## 報告と貢献
+
+不具合の報告・要望・PR は、[CONTRIBUTING.md](CONTRIBUTING.md) を読む。脆弱性は、[SECURITY.md](SECURITY.md) の手順で知らせる。
+
+## ライセンス
+
+[MIT](LICENSE)
