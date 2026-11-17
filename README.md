@@ -44,6 +44,34 @@ The MCP server runs on the Node in your PATH. It requires Node 24 or later.
 
 4. On the configuration screen, enter the Issuer ID and the Key ID. To change them later, run `/plugin configure asc-mcp@asc-mcp`.
 
+## Use with other MCP clients
+
+The MCP server also works in other MCP clients, such as Claude Desktop and Cursor. The `release` skill is for Claude Code only.
+
+1. Do steps 1 and 2 of [Install](#install).
+2. Add the server to the MCP configuration of your client. In Claude Desktop, go to **Settings** > **Developer** > **Edit Config**. In Cursor, edit `~/.cursor/mcp.json`.
+
+   ```json
+   {
+     "mcpServers": {
+       "asc": {
+         "command": "npx",
+         "args": ["-y", "@ihideck/asc-mcp"],
+         "env": {
+           "ASC_ISSUER_ID": "<Issuer ID>",
+           "ASC_KEY_ID": "<Key ID>"
+         }
+       }
+     }
+   }
+   ```
+
+3. Restart the client. Check that the client lists `list_apps` among the tools.
+
+To run the server from source instead, run `git clone https://github.com/iHideck/asc-mcp.git` and `npm ci --prefix asc-mcp/plugin`. Then set `"command": "node"` and `"args": ["/absolute/path/to/asc-mcp/plugin/src/index.ts"]`.
+
+Tools that submit, release, or change the price or territories ask for confirmation only in Claude Code. In other clients, set the client to ask before it calls those tools. To make every tool that writes return the request instead of sending it, add `"ASC_READ_ONLY": "1"` to `env`.
+
 ## Development
 
 The plugin is in `plugin/`. With the plugin, Claude Code installs only the dependencies in `plugin/package.json`. Keep development tools such as ESLint in the root `package.json`.
@@ -55,7 +83,16 @@ The plugin is in `plugin/`. With the plugin, Claude Code installs only the depen
 | `make download-openapi` | Downloads the current OpenAPI specification from Apple to `.local/` again. |
 | `make validate-plugin` | Validates the plugin and marketplace configuration. |
 | `make run-claude` | Starts Claude Code connected to the MCP server from your local source. |
+| `make pack-npm` | Builds the npm package (`@ihideck/asc-mcp`) into a `.tgz` file in `plugin/`. |
 
 The tests check that the path, parameters, and values of each request exist in the OpenAPI specification. Each CI run downloads the current specification from Apple and checks against it.
 
 To test your local source against the real API, put the Issuer ID and the Key ID in the `ASC_ISSUER_ID` and `ASC_KEY_ID` environment variables, then run `make run-claude`. The plugin configuration does not reach a plugin that `claude --plugin-dir` loads. In this setup, tools that write do not change App Store Connect. Instead, they return the request they would have sent as an error. To write to App Store Connect, also set `ASC_READ_ONLY=0`.
+
+## Contributing
+
+To report a bug, request a feature, or send a pull request, see [CONTRIBUTING.md](CONTRIBUTING.md). To report a security vulnerability, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)

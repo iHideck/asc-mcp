@@ -17,7 +17,7 @@ export class ConfigError extends Error {
 }
 
 const SETUP_HINT =
-  'Enter the Issuer ID and Key ID with /plugin configure asc-mcp@asc-mcp, then restart Claude Code.';
+  'In Claude Code, enter the Issuer ID and Key ID with /plugin configure asc-mcp@asc-mcp, then restart Claude Code. In other MCP clients, set the ASC_ISSUER_ID and ASC_KEY_ID environment variables in the server configuration, then restart the client.';
 
 const AUDIENCE = 'appstoreconnect-v1';
 // Apple は、有効期限が20分より先のトークンを受け付けない
