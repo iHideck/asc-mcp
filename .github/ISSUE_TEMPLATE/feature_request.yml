@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a new tool or a change to an existing one.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you want to do
+      description: The release task you want to do, and why the current tools cannot do it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The tool or parameter you have in mind. Link the App Store Connect API documentation if you know the endpoint.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: For example, the steps you take in App Store Connect in the browser today.

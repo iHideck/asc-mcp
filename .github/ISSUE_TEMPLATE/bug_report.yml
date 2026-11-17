@@ -1,0 +1,47 @@
+name: Bug report
+description: A tool or the skill does not work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include your Issuer ID, Key ID, private key, or App Review contact details. To report a security vulnerability, follow SECURITY.md instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The tool you called, its input, and the result or error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Ask Claude to "prepare version 1.2.0"
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: asc-mcp version
+      description: The release tag or commit, for example v1.0.0.
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      placeholder: Claude Code 2.1.0
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: The output of `node --version`.
+    validations:
+      required: true
