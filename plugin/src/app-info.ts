@@ -156,7 +156,7 @@ export async function setAppInfo(
   );
   const touchesAppInfo = categories.length > 0 || ageRating.length > 0;
   const appInfoId = touchesAppInfo
-    ? (await findEditableAppInfo(client, app.appleId, 'カテゴリ・年齢制限')).id
+    ? (await findEditableAppInfo(client, app.appleId, 'categories and age rating')).id
     : await shownAppInfo(client, app.appleId);
   const read = () => readState(client, app.appleId, appInfoId);
   const before = await read();
@@ -166,7 +166,7 @@ export async function setAppInfo(
   const declarationId = before.declarationId;
   if (ageRating.length > 0 && declarationId === null) {
     throw new Error(
-      'App 情報に、年齢制限の答えがありません。App Store Connect で確かめてください。何も変えていません。',
+      'App Information has no age rating answers. Check them in App Store Connect. Nothing was changed.',
     );
   }
   const categoryChanges = categories.filter(
@@ -181,7 +181,7 @@ export async function setAppInfo(
 
   const progress = trackProgress();
   if (categoryChanges.length > 0) {
-    await progress.write('カテゴリを変える', 'カテゴリを変えました', () =>
+    await progress.write('changing the categories', 'Changed the categories', () =>
       client.update(
         'appInfos',
         appInfoId,
@@ -194,18 +194,22 @@ export async function setAppInfo(
   }
   if (rightsChanged && request.contentRightsDeclaration !== undefined) {
     const declaration = request.contentRightsDeclaration;
-    await progress.write('コンテンツ配信権を変える', 'コンテンツ配信権を変えました', () =>
-      client.update('apps', app.appleId, { contentRightsDeclaration: declaration }),
+    await progress.write(
+      'changing the content rights declaration',
+      'Changed the content rights declaration',
+      () => client.update('apps', app.appleId, { contentRightsDeclaration: declaration }),
     );
   }
   if (Object.keys(ageRatingChanges).length > 0 && declarationId !== null) {
-    await progress.write('年齢制限の答えを変える', '年齢制限の答えを変えました', () =>
+    await progress.write('changing the age rating answers', 'Changed the age rating answers', () =>
       client.update('ageRatingDeclarations', declarationId, ageRatingChanges),
     );
   }
   const changed =
     categoryChanges.length > 0 || rightsChanged || Object.keys(ageRatingChanges).length > 0;
-  const after = changed ? await progress.read('変えた App 情報を読み直す', read) : before;
+  const after = changed
+    ? await progress.read('reading App Information again after the change', read)
+    : before;
   return {
     app,
     before: before.state,
@@ -220,7 +224,7 @@ async function shownAppInfo(client: AscClient, appleId: string): Promise<string>
   const appInfo =
     appInfos.find(({ state }) => EDITABLE_APP_INFO_STATES.includes(state)) ?? appInfos[0];
   if (appInfo === undefined) {
-    throw new Error('App 情報を、読めませんでした。');
+    throw new Error('Could not read App Information.');
   }
   return appInfo.id;
 }
@@ -235,7 +239,7 @@ async function readState(
     client.getOne(`/v1/apps/${appleId}`, sparseFields(AppRights), AppRights),
   ]);
   if (appInfo === null) {
-    throw new Error('App 情報を、読めませんでした。');
+    throw new Error('Could not read App Information.');
   }
   const declaration = await client.getOne(
     `/v1/appInfos/${appInfoId}/ageRatingDeclaration`,
@@ -288,20 +292,20 @@ async function checkCategories(
   ] as const) {
     const category = request[main] ?? current[main];
     if (request[main] !== undefined && !subcategoriesOf.has(request[main])) {
-      problems.push(`${main} に ${request[main]} は使えません`);
+      problems.push(`${main} cannot be ${request[main]}`);
     }
     for (const sub of subs) {
       const value = request[sub];
       if (value !== undefined && !(subcategoriesOf.get(category ?? '') ?? []).includes(value)) {
         problems.push(
-          `${sub} に ${value} は使えません（${category ?? 'カテゴリ未設定'} のサブカテゴリではありません）`,
+          `${sub} cannot be ${value} (it is not a subcategory of ${category ?? 'the unset category'})`,
         );
       }
     }
   }
   if (problems.length > 0) {
     throw new Error(
-      `${problems.join('。\n')}。\n使えるカテゴリは ${[...subcategoriesOf.keys()].join('、')} です。何も変えていません。`,
+      `${problems.join('.\n')}.\nThe available categories are ${[...subcategoriesOf.keys()].join(', ')}. Nothing was changed.`,
     );
   }
 }
@@ -317,20 +321,20 @@ function warningsFor(
       .filter((slot) => after.categories[slot] !== request[slot])
       .map(
         (slot) =>
-          `${slot} が ${String(after.categories[slot])} です（頼んだのは ${String(request[slot])}）`,
+          `${slot} is ${String(after.categories[slot])} (requested: ${String(request[slot])})`,
       ),
     ...(request.contentRightsDeclaration !== undefined &&
     after.contentRightsDeclaration !== request.contentRightsDeclaration
-      ? [`コンテンツ配信権が ${String(after.contentRightsDeclaration)} です`]
+      ? [`the content rights declaration is ${String(after.contentRightsDeclaration)}`]
       : []),
     ...ageRating
       .filter(([name, value]) => after.ageRating[name] !== value)
-      .map(([name]) => `年齢制限の ${name} が ${String(after.ageRating[name])} です`),
-  ].map((text) => `App Store Connect の値が、頼んだものと違います: ${text}`);
+      .map(([name]) => `the age rating answer ${name} is ${String(after.ageRating[name])}`),
+  ].map((text) => `The value in App Store Connect differs from the request: ${text}`);
   const unrated =
     after.appStoreAgeRating === null
       ? [
-          `App Store の年齢が、まだ決まっていません。年齢制限の答えが足りないかもしれません（答えていない項目: ${AGE_RATING_NAMES.filter((name) => after.ageRating[name] === null).join('、')}）。`,
+          `The App Store age rating is not set yet. Some age rating answers might be missing (unanswered: ${AGE_RATING_NAMES.filter((name) => after.ageRating[name] === null).join(', ')}).`,
         ]
       : [];
   return [...differences, ...unrated];

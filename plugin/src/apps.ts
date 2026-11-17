@@ -28,7 +28,7 @@ export async function findApp(client: AscClient, bundleId: string): Promise<AppS
   const app = data.find((candidate) => candidate.attributes.bundleId === bundleId);
   if (app === undefined) {
     throw new Error(
-      `バンドル ID が ${bundleId} のアプリは、App Store Connect にありません。list_apps で、あるアプリを見られます。`,
+      `App Store Connect has no app with the bundle ID ${bundleId}. Use list_apps to see the available apps.`,
     );
   }
   return summarize(app);

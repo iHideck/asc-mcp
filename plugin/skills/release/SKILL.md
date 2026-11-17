@@ -1,66 +1,66 @@
 ---
-description: App Store へのリリース（次の版の準備・初めて出すアプリの設定・審査への提出・公開）を、asc-mcp のツールで進める。「次の版を出したい」「初めて App Store に出したい」「画面写真を入れ替えて」「審査に出して」「公開して」「段階的リリースを止めて」などと頼まれたときに使う。
+description: Takes an App Store release (preparing the next version, setting up a new app, submitting for App Review, and releasing) through the asc-mcp tools. Use when asked something like "Ship the next version", "Publish this app on the App Store for the first time", "Replace the screenshots", "Submit it for review", "Release it", or "Pause the phased release".
 ---
 
-# App Store へのリリース
+# Release to the App Store
 
-asc-mcp のツールで、次の版の準備から公開までを進める。アプリのバンドル ID が分からなければ、`list_apps` で調べる。
+Use the asc-mcp tools to take the next version from preparation to release. If you do not know the bundle ID of the app, look it up with `list_apps`.
 
-外に出るツール（`submit_for_review`・`cancel_review`・`release_version`・`set_phased_release`）は、呼ぶたびに Claude Code が利用者に確認を出す。呼ぶ前に、何をするかを文で見せ、利用者がよいと言ってから呼ぶ。
+Each time you call a tool with external effects (`submit_for_review`, `cancel_review`, `release_version`, and `set_phased_release`), Claude Code asks the user to confirm. Before you call one, describe in text what it will do, and call it only after the user agrees.
 
-## 1. いまの状態を見る
+## 1. Check the current state
 
-1. `get_release_status` で、ビルドと版の状態を読む
-2. 次に出す版の番号と、出すビルドを決める。決まっていなければ、利用者に聞く
-   - 出せるビルドは、ビルドの版（`version`）が版の番号と同じで、処理が済んだ（`VALID`）もの
-   - まだビルドを上げていなければ、アプリのリポジトリの手順（`make release-testflight` など）で上げてもらう。asc-mcp はビルドを上げない
+1. Read the state of the builds and versions with `get_release_status`.
+2. Decide the number of the next version and the build to submit. If they are not decided, ask the user.
+   - A build that you can submit has a build version (`version`) equal to the version number and has finished processing (`VALID`).
+   - If the user has not uploaded the build yet, ask them to upload it with the procedure of the app's repository (for example, `make release-testflight`). asc-mcp does not upload builds.
 
-## 2. 版を用意する
+## 2. Prepare the version
 
-書くツールは、いまの状態と比べて差だけを変えるので、同じ呼び出しをやり直してよい。
+The tools that write compare the current state with your input and change only the differences. You can repeat the same call.
 
-1. `ensure_version` で版を用意する。公開のしかた（`MANUAL`・`AFTER_APPROVAL`・`SCHEDULED`）と段階的リリースは、利用者が決めたものを渡す
-2. `select_build` でビルドを選ぶ
-3. `get_localizations` でいまの文を読み、`set_localizations` で変える文を入れる。初めて出す版でなければ、新機能の文（`whatsNew`）は全部の言語に要る
-   - アプリのリポジトリに掲載の文の決まりや正本（`docs/release.md` など）があれば、それに従う。入れたあと、正本と食い違いがないかを確かめる
-4. 画面写真を変えるときは、`replace_screenshots` で、言語と欄（`displayType`）ごとに入れ替える。新しい版には、前の版の写真が写されている
-   - アプリのリポジトリに、画面写真の撮り方や入れる欄の決まり（`docs/release.md` など）があれば、それに従う
-   - 初めて出す版では、iPhone の `APP_IPHONE_61` の欄に1枚以上が要る。iPad にも出すアプリは、`APP_IPAD_PRO_3GEN_129` の欄にも要る
-5. `set_review_detail` で、審査メモと、サインインが要るかを入れる。審査の連絡先が欠けていれば、`copy_review_contact` でほかのアプリの版から写す
-6. 各ツールの `warnings` と `skipped` を、利用者に伝える
+1. Prepare the version with `ensure_version`. Pass the release type (`MANUAL`, `AFTER_APPROVAL`, or `SCHEDULED`) and the phased release that the user decided.
+2. Select the build with `select_build`.
+3. Read the current text with `get_localizations`, then write the text to change with `set_localizations`. Unless this is the first version of the app, every locale needs the What's New text (`whatsNew`).
+   - If the app's repository has rules or a source of truth for the App Store text (for example, `docs/release.md`), follow them. After you write the text, check that it matches the source of truth.
+4. To change the screenshots, use `replace_screenshots` for each locale and display type (`displayType`). A new version starts with a copy of the screenshots of the previous version.
+   - If the app's repository has rules for taking screenshots or for the display types to fill (for example, `docs/release.md`), follow them.
+   - The first version needs at least one screenshot for the `APP_IPHONE_61` display type. An app that also supports iPad also needs screenshots for `APP_IPAD_PRO_3GEN_129`.
+5. Set the review notes and whether the app requires sign-in with `set_review_detail`. If the App Review contact is missing, copy it from a version of another app with `copy_review_contact`.
+6. Tell the user the `warnings` and `skipped` of each tool.
 
-画面でしかできないこと（審査用のアカウント・App のプライバシー）が残っていれば、App Store Connect の画面で入れてもらう。
+If anything remains that only the App Store Connect website can set (such as the demo account for App Review or App Privacy), ask the user to enter it on the website.
 
-## 初めて出すアプリの設定
+## Setup for a new app
 
-初めて App Store に出すアプリは、2 のほかに、次のものを入れる。どれも、同じ呼び出しをやり直してよい。
+For an app that has never been on the App Store, also set the following in addition to step 2. You can repeat each call.
 
-1. `set_app_info` で、カテゴリ・コンテンツ配信権・年齢制限の答えを入れる。返る `appStoreAgeRating` が、App Store が決めた年齢
-2. `set_price` で、価格を入れる（いまは無料だけ）
-3. `set_availability` で、配信する国を入れる。ほかのアプリと同じ国にするなら、`sameAsApp` を使う
-4. `copy_review_contact` で、審査の連絡先を、ほかのアプリの版から写す
+1. Set the categories, the content rights declaration, and the age rating answers with `set_app_info`. The returned `appStoreAgeRating` is the age rating that the App Store assigns.
+2. Set the price with `set_price`. The only supported price is free.
+3. Set the territories with `set_availability`. To use the same territories as another app, use `sameAsApp`.
+4. Copy the App Review contact from a version of another app with `copy_review_contact`.
 
-価格と配信する国は、呼ぶたびに利用者の確認が出る。呼ぶ前に、入れる値を利用者に見せる。
+Each call to set the price or the territories asks the user to confirm. Before the call, show the user the values you will set.
 
-次のものは API に無いので、[App Store Connect](https://appstoreconnect.apple.com/apps) でアプリを開き、画面で入れてもらう。
+The API does not support the following. Ask the user to open the app in [App Store Connect](https://appstoreconnect.apple.com/apps) and set them on the website.
 
-- 「App のプライバシー」
-- Apple シリコン搭載の Mac と Apple Vision Pro での配信。「価格および配信状況」のページの、「Appleシリコン搭載のMacでのiPhoneおよびiPad用のアプリ」と「Apple Vision Pro上のiPhoneおよびiPadアプリ」の「配信可能にする」で決める。iPhone だけに出すときは、2 つとも外してもらう。Claude からは読めないので、外したかを利用者に確かめる
+- **App Privacy**
+- Availability on Apple silicon Macs and on Apple Vision Pro. On the **Pricing and Availability** page, the user sets **Make this app available** under **iPhone and iPad Apps on Apple Silicon Macs** and under **iPhone and iPad Apps on Apple Vision Pro**. For an iPhone-only release, ask the user to clear both. Claude cannot read these settings, so ask the user to confirm that they cleared them.
 
-## 3. 審査に出す
+## 3. Submit for App Review
 
-1. 利用者に、版の番号・ビルドの番号・公開のしかた・段階的リリースの有無・変えた文（新機能の文は全文）・入れ替えた画面写真を見せる。審査に出すと、取り下げるまで、文も画面写真も変えられない
-2. 利用者がよいと言ったら、`submit_for_review` を呼ぶ
-3. 出したあとは、`get_release_status` で状態を見る。審査の結果が出るまで、数時間から数日かかる
+1. Show the user the version number, the build number, the release type, whether the phased release is on, the text you changed (the full What's New text), and the screenshots you replaced. After submission, neither the text nor the screenshots can change until the submission is withdrawn.
+2. When the user agrees, call `submit_for_review`.
+3. After submission, check the state with `get_release_status`. The result of App Review takes from a few hours to a few days.
 
-## 4. 公開する
+## 4. Release
 
-- `AFTER_APPROVAL` と `SCHEDULED` の版は、審査が通れば、何もしなくても公開される
-- `MANUAL` の版は、審査が通ると `PENDING_DEVELOPER_RELEASE` になる。利用者が公開してよいと言ったら、`release_version` を呼ぶ。公開は取り消せない
-- 段階的リリースは、7日かけて少しずつ出す。`set_phased_release` で、止める（`pause`）・再開する（`resume`）・全員に出す（`complete`）。全員に出すのは取り消せない
+- A version with `AFTER_APPROVAL` or `SCHEDULED` is released automatically after it passes App Review.
+- A version with `MANUAL` changes to `PENDING_DEVELOPER_RELEASE` after it passes App Review. When the user says to release it, call `release_version`. You cannot undo a release.
+- A phased release releases the version gradually over 7 days. With `set_phased_release`, you can pause it (`pause`), resume it (`resume`), or release to all users (`complete`). You cannot undo a release to all users.
 
-## 却下されたとき・取り下げるとき
+## When App Review rejects the version or you withdraw it
 
-- 却下の理由は、App Store Connect の画面（Resolution Center）で読んでもらう。API では読めない
-- 直したら、2 の手順で版を整え、3 でもう一度出す
-- 審査に出した版を直したいときは、`cancel_review` で取り下げる。取り下げた版は、また編集できる
+- Ask the user to read the reason for the rejection in App Store Connect (Resolution Center). The API cannot read it.
+- After the fix, update the version with step 2 and submit it again with step 3.
+- To change a version that is in App Review, withdraw it with `cancel_review`. You can edit a withdrawn version again.

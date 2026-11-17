@@ -41,7 +41,7 @@ function json(value: unknown) {
 }
 
 const appArguments = {
-  bundleId: z.string().min(1).describe('アプリのバンドル ID（例: com.ihideck.machosterone）'),
+  bundleId: z.string().min(1).describe('Bundle ID of the app (for example, com.example.myapp)'),
   platform: z.enum(PLATFORMS).default('IOS'),
 };
 
@@ -53,8 +53,8 @@ const server = new McpServer({ name: 'asc-mcp', version: packageJson.version });
 server.registerTool(
   'list_apps',
   {
-    title: 'アプリの一覧',
-    description: 'App Store Connect にあるアプリの、名前・バンドル ID・Apple ID を返す。',
+    title: 'List apps',
+    description: 'Returns the name, bundle ID, and Apple ID of each app in App Store Connect.',
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   async () => json({ apps: await listApps(await getClient()) }),
@@ -63,9 +63,9 @@ server.registerTool(
 server.registerTool(
   'get_release_status',
   {
-    title: 'リリースの状態',
+    title: 'Get release status',
     description:
-      '新しい順に5つのビルドと、公開中の版と次に出す版を返す。ビルドは、処理の状態・TestFlight の状態・配ったグループ・アップロードのときの ITMS- のエラーと警告（uploadIssues。記録が無ければ null）。版は、状態・公開のしかた・選んだビルド・段階的リリース。',
+      'Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the ITMS- errors and warnings from its upload (uploadIssues; null if no record exists). Each version includes its state, its release type, its selected build, and its phased release.',
     inputSchema: z.object(appArguments),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -76,9 +76,9 @@ server.registerTool(
 server.registerTool(
   'get_localizations',
   {
-    title: '掲載の文',
+    title: 'Get localized text',
     description:
-      '版の言語ごとの文（概要・キーワード・プロモーション用テキスト・新機能・サポート URL・マーケティング URL）と、App 情報の言語ごとの文（名前・サブタイトル・プライバシーポリシーの URL）を返す。App 情報は版に結び付かず、公開中のものと、次の版のために編集中のものがあるので、状態を付けて返す。言語が多くて出力が大きいときは、locales で絞る。',
+      "Returns the localized text of a version for each language (description, keywords, promotional text, what's new, support URL, and marketing URL) and the localized text of App Information for each language (name, subtitle, and privacy policy URL). App Information is not tied to a version. It can have a live copy and a copy that is being edited for the next version, so each copy is returned with its state. If the app has many languages and the output is large, use locales to narrow it.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -86,13 +86,13 @@ server.registerTool(
         .min(1)
         .optional()
         .describe(
-          '読む版（例: 1.0.1）。省くと、いちばん新しい版（次に出す版があればそれ、なければ公開中の版）を読む',
+          'Version to read (for example, 1.0.1). If omitted, reads the newest version: the next version if one exists, otherwise the live version',
         ),
       locales: z
         .array(z.string().min(1))
         .min(1)
         .optional()
-        .describe('読む言語（例: ["ja", "en-US"]）。省くと、すべての言語を読む'),
+        .describe('Locales to read (for example, ["ja", "en-US"]). If omitted, reads all locales'),
     }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -102,34 +102,34 @@ server.registerTool(
 server.registerTool(
   'ensure_version',
   {
-    title: '版を用意する',
+    title: 'Prepare version',
     description:
-      '次に出す版を用意する。その番号の版が無ければ作る。編集できる版（提出の準備中・却下のあと）が別の番号なら、その版の番号を変える。公開のしかたと段階的リリースは、渡したものだけをそろえる。審査中の版は変えず、公開したことのある番号は使わない。変える前と後の版と、気を付けること（warnings）を返す。',
+      'Prepares the next version. Creates the version if no version has that number. If the editable version (prepare for submission or rejected) has a different number, changes its number. Sets the release type and the phased release only when you pass them. Does not change a version that is in App Review, and does not reuse a number that was already released. Returns the version before and after the change, and any warnings.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .describe(
-          '版の番号（例: 1.0.2）。上げるビルドの版（CFBundleShortVersionString）と同じにする',
+          'Version number (for example, 1.0.2). Must match the version (CFBundleShortVersionString) of the build that you upload',
         ),
       releaseType: z
         .enum(RELEASE_TYPES)
         .optional()
         .describe(
-          '公開のしかた。MANUAL は審査のあと手動で、AFTER_APPROVAL は審査が通ったらすぐ、SCHEDULED は earliestReleaseDate の日時から公開する。省くと変えない',
+          'Release type. MANUAL releases manually after App Review, AFTER_APPROVAL releases as soon as the version passes App Review, and SCHEDULED releases at earliestReleaseDate. If omitted, the release type does not change',
         ),
       earliestReleaseDate: z.iso
         .datetime({ offset: true })
         .optional()
         .describe(
-          'SCHEDULED のときの、公開する日時。正時で、いまより先にする（例: 2026-12-01T10:00:00+09:00）',
+          'Release date and time for SCHEDULED. Must be on the hour and in the future (for example, 2026-12-01T10:00:00+09:00)',
         ),
       phasedRelease: z
         .boolean()
         .optional()
         .describe(
-          '段階的リリース（7日かけて、自動で更新する利用者に少しずつ出す）を使うか。省くと変えない',
+          'Whether to use a phased release, which releases the update gradually over 7 days to users with automatic updates turned on. If omitted, the setting does not change',
         ),
     }),
     annotations: {
@@ -145,17 +145,19 @@ server.registerTool(
 server.registerTool(
   'select_build',
   {
-    title: 'ビルドを選ぶ',
+    title: 'Select build',
     description:
-      '版に、審査に出すビルドを選ぶ。選べるのは、処理が済み（VALID）、期限が切れておらず、ビルドの版（CFBundleShortVersionString）が版の番号と同じビルド。版は、編集できるもの（提出の準備中・却下のあと）だけ。選ぶ前と後のビルドと、気を付けること（warnings）を返す。',
+      'Selects the build to submit for App Review for a version. You can select only a build that finished processing (VALID), has not expired, and has a version (CFBundleShortVersionString) that matches the version number. The version must be editable (prepare for submission or rejected). Returns the build before and after the selection, and any warnings.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('ビルドを選ぶ版（例: 1.0.2）。省くと、編集できる版に選ぶ'),
-      buildNumber: z.string().min(1).describe('ビルドの番号（CFBundleVersion。例: 12）'),
+        .describe(
+          'Version to select the build for (for example, 1.0.2). If omitted, uses the editable version',
+        ),
+      buildNumber: z.string().min(1).describe('Build number (CFBundleVersion; for example, 12)'),
     }),
     annotations: {
       readOnlyHint: false,
@@ -170,20 +172,22 @@ server.registerTool(
 server.registerTool(
   'set_localizations',
   {
-    title: '掲載の文を入れる',
+    title: 'Set localized text',
     description:
-      '編集できる版（提出の準備中・却下のあと）に、言語ごとの掲載の文を入れる。版の文（概要・キーワード・プロモーション用テキスト・新機能・URL）と、App 情報の文（名前・サブタイトル・プライバシーポリシーの URL）のうち、渡した項目だけを変える。入れる前に上限の文字数と URL の形を確かめ、1つでも合わなければ何も変えない。初めて出す版では、新機能の文を飛ばす。言語は足さない。変えた項目の前と後と、気を付けること（warnings）を返す。',
+      "Writes localized App Store text for each language to the editable version (prepare for submission or rejected). Changes only the fields you pass, among the version text (description, keywords, promotional text, what's new, and URLs) and the App Information text (name, subtitle, and privacy policy URL). Checks the character limits and URL formats before it writes, and changes nothing if any value fails. Skips what's new for the first version of an app. Does not add languages. Returns each changed field before and after the change, and any warnings.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('文を入れる版（例: 1.0.2）。省くと、編集できる版に入れる'),
+        .describe(
+          'Version to write the text to (for example, 1.0.2). If omitted, uses the editable version',
+        ),
       localizations: z
         .array(localizationInput)
         .min(1)
-        .describe('言語ごとの文。渡さない項目は変えない'),
+        .describe('Localized text for each locale. Fields that you omit do not change'),
     }),
     annotations: {
       readOnlyHint: false,
@@ -198,29 +202,33 @@ server.registerTool(
 server.registerTool(
   'replace_screenshots',
   {
-    title: '画面写真を入れ替える',
+    title: 'Replace screenshots',
     description:
-      'iOS の編集できる版（提出の準備中・却下のあと）の、1つの言語の1つの欄（displayType）の画面写真を、渡したファイルに入れ替え、渡した順に並べる。送る前に、全部のファイルが PNG か JPEG かと、写真の大きさがその欄のものかを確かめ、1つでも合わなければ何も変えない。同じ写真（MD5 が同じもの）は上げ直さない。足りない写真を欄に入る分だけ先に上げ、Apple が受け付けたのを確かめてから、要らない写真を消す。Apple の処理は1回につき2分まで待ち、終わらなければそこで止めて warnings で知らせる。やり直すと続きを行う。入れ替える前と後の写真の一覧と、上げた写真・消した写真の名前を返す。',
+      'Replaces the screenshots for one locale and one display type (displayType) of the editable iOS version (prepare for submission or rejected) with the files you pass, in the order you pass them. Before it uploads, checks that every file is PNG or JPEG and that each image size fits the display type, and changes nothing if any file fails. Does not upload an identical screenshot (same MD5) again. First uploads the missing screenshots, as many as the display type has room for, confirms that Apple accepted them, and then deletes the screenshots that are no longer needed. Waits up to 2 minutes for Apple to process each call. If processing does not finish, stops and reports it in warnings; call the tool again to continue. Returns the screenshots before and after the replacement, and the names of the uploaded and deleted screenshots.',
     inputSchema: z.object({
       bundleId: appArguments.bundleId,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('写真を入れ替える版（例: 1.1.0）。省くと、編集できる版'),
-      locale: z.string().min(1).describe('写真を入れ替える言語（例: ja）'),
+        .describe(
+          'Version whose screenshots to replace (for example, 1.1.0). If omitted, uses the editable version',
+        ),
+      locale: z.string().min(1).describe('Locale whose screenshots to replace (for example, ja)'),
       displayType: z.enum(DISPLAY_TYPE_NAMES).describe(
-        `入れ替える欄。Apple の Screenshot specifications の区分と、受け付ける写真の大きさ: ${Object.entries(
+        `Display type to replace. The categories from Apple's Screenshot specifications and the image sizes that each accepts: ${Object.entries(
           DISPLAY_TYPES,
         )
-          .map(([name, { label, sizes }]) => `${name}（${label}）${sizes.join('・')}`)
-          .join('。')}`,
+          .map(([name, { label, sizes }]) => `${name} (${label}): ${sizes.join(', ')}`)
+          .join('; ')}`,
       ),
       files: z
         .array(z.string().min(1))
         .min(1)
         .max(MAX_SCREENSHOTS)
-        .describe('欄に入れる写真（PNG か JPEG）のファイルの絶対パス。並べたい順に渡す'),
+        .describe(
+          'Absolute paths of the screenshot files (PNG or JPEG) for the display type, in the order to display them',
+        ),
     }),
     annotations: {
       readOnlyHint: false,
@@ -235,28 +243,30 @@ server.registerTool(
 server.registerTool(
   'set_review_detail',
   {
-    title: '審査の情報を入れる',
+    title: 'Set App Review information',
     description:
-      '編集できる版（提出の準備中・却下のあと）の、審査の情報（App Review Information）のうち、審査メモと、サインインが要るかを入れる。渡した項目だけを変える。連絡先と審査用のアカウントは入れず、欠けていれば warnings で知らせる。審査用のアカウントのパスワードは、読みも書きもしない。変える前と後を返す。',
+      'Sets the review notes and whether the app requires sign-in in the App Review Information of the editable version (prepare for submission or rejected). Changes only the fields you pass. Does not set the contact or the demo account, and reports a missing one in warnings. Never reads or writes the demo account password. Returns the values before and after the change.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('審査の情報を入れる版（例: 1.0.2）。省くと、編集できる版に入れる'),
+        .describe(
+          'Version to set the App Review information for (for example, 1.0.2). If omitted, uses the editable version',
+        ),
       notes: z
         .string()
         .nullable()
         .optional()
         .describe(
-          '審査メモ。Apple の文書では 4000 バイトまで。null か空の文字にすると消す。省くと変えない',
+          'Review notes. Apple documents a limit of 4000 bytes. Pass null or an empty string to clear them. If omitted, they do not change',
         ),
       demoAccountRequired: z
         .boolean()
         .optional()
         .describe(
-          'アプリを使うのに、サインインが要るか。要るときは、審査用のアカウントを App Store Connect の画面で入れる。省くと変えない',
+          'Whether the app requires sign-in. If it does, enter the demo account in App Store Connect. If omitted, the setting does not change',
         ),
     }),
     annotations: {
@@ -272,20 +282,22 @@ server.registerTool(
 server.registerTool(
   'copy_review_contact',
   {
-    title: '審査の連絡先を写す',
+    title: 'Copy App Review contact',
     description:
-      '審査の連絡先（名・姓・電話番号・メール）を、ほかのアプリの版から、編集できる版（提出の準備中・却下のあと）に写す。写す元は、そのアプリの新しい版から、連絡先がそろったものを選ぶ。違う項目だけを写し、審査の情報がまだ無い版では作る。連絡先の中身は、結果にもエラーの文にも出さない。写した項目の名前と、欠けている項目を返す。',
+      'Copies the App Review contact (first name, last name, phone number, and email) from a version of another app to the editable version (prepare for submission or rejected). Uses the newest version of the other app that has a complete contact. Copies only the fields that differ, and creates the App Review information if the version has none. Never includes the contact details in the result or in error messages. Returns the names of the copied fields and of any missing fields.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('連絡先を写す先の版（例: 1.0.0）。省くと、編集できる版に写す'),
+        .describe(
+          'Version to copy the contact to (for example, 1.0.0). If omitted, uses the editable version',
+        ),
       fromBundleId: z
         .string()
         .min(1)
-        .describe('連絡先を写す元のアプリのバンドル ID（例: com.ihideck.machosterone）'),
+        .describe('Bundle ID of the app to copy the contact from (for example, com.example.myapp)'),
     }),
     annotations: {
       readOnlyHint: false,
@@ -302,29 +314,29 @@ const categoryId = (description: string) => z.string().min(1).optional().describ
 server.registerTool(
   'set_app_info',
   {
-    title: 'App 情報を入れる',
+    title: 'Set App Information',
     description:
-      'App 情報のうち、カテゴリ・コンテンツ配信権・年齢制限の答えを入れる。カテゴリと年齢制限は、編集できる App 情報（提出の準備中・却下のあと）に入れる。渡した項目で、いまと違うものだけを変える。入れたあと、App Store が決めた年齢（appStoreAgeRating）を返す。何も渡さなければ、いまの値を返す。変える前と後と、気を付けること（warnings）を返す。',
+      'Sets the categories, the content rights declaration, and the age rating answers in App Information. Writes the categories and the age rating to the editable App Information (prepare for submission or rejected). Changes only the fields you pass that differ from the current values. After it writes, returns the age rating that the App Store assigns (appStoreAgeRating). If you pass nothing, returns the current values. Returns the values before and after the change, and any warnings.',
     inputSchema: z.object({
       ...appArguments,
-      primaryCategory: categoryId('カテゴリの ID（例: GAMES、EDUCATION）'),
+      primaryCategory: categoryId('Primary category ID (for example, GAMES or EDUCATION)'),
       primarySubcategoryOne: categoryId(
-        'カテゴリのサブカテゴリの ID（例: GAMES_TRIVIA）。サブカテゴリがあるカテゴリ（ゲームなど）だけ',
+        'Subcategory ID of the primary category (for example, GAMES_TRIVIA). Only for categories that have subcategories, such as Games',
       ),
-      primarySubcategoryTwo: categoryId('カテゴリの2つ目のサブカテゴリの ID'),
-      secondaryCategory: categoryId('2つ目のカテゴリの ID'),
-      secondarySubcategoryOne: categoryId('2つ目のカテゴリのサブカテゴリの ID'),
-      secondarySubcategoryTwo: categoryId('2つ目のカテゴリの、2つ目のサブカテゴリの ID'),
+      primarySubcategoryTwo: categoryId('Second subcategory ID of the primary category'),
+      secondaryCategory: categoryId('Secondary category ID'),
+      secondarySubcategoryOne: categoryId('Subcategory ID of the secondary category'),
+      secondarySubcategoryTwo: categoryId('Second subcategory ID of the secondary category'),
       contentRightsDeclaration: z
         .enum(CONTENT_RIGHTS)
         .optional()
         .describe(
-          'ほかの人が作ったもの（文・画像・音など）を使うか。USES_THIRD_PARTY_CONTENT は、使う権利があることの申告になる',
+          'Whether the app uses content made by others, such as text, images, or audio. USES_THIRD_PARTY_CONTENT declares that you have the rights to use it',
         ),
       ageRating: ageRatingInput
         .optional()
         .describe(
-          '年齢制限の答え。真偽値の項目と、頻度（NONE・INFREQUENT_OR_MILD・FREQUENT_OR_INTENSE・INFREQUENT・FREQUENT）の項目がある。渡した項目だけを変える',
+          'Age rating answers. Some fields are booleans, and others are frequencies (NONE, INFREQUENT_OR_MILD, FREQUENT_OR_INTENSE, INFREQUENT, or FREQUENT). Changes only the fields you pass',
         ),
     }),
     annotations: {
@@ -337,18 +349,22 @@ server.registerTool(
   async (request) => json(await setAppInfo(await getClient(), request)),
 );
 
-const territoryId = z.string().regex(/^[A-Z]{3}$/, '国の ID は、JPN・USA のような 3 文字です');
+const territoryId = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'A territory ID is 3 letters, such as JPN or USA');
 
 server.registerTool(
   'set_price',
   {
-    title: '価格を入れる',
+    title: 'Set price',
     description:
-      'アプリの価格を入れる。いまは無料だけ。基準の国の無料の価格の点で、価格の予定を作る。もう無料なら、そのまま返す。公開済みのアプリでは、審査なしで、すぐ利用者に届く。呼ぶたびに、利用者の確認が要る。入れる前と後の価格を返す。',
+      "Sets the app price. The only supported price is free. Creates a price schedule with the free price point of the base territory. If the app is already free, returns without changes. For a released app, the change reaches users immediately, without App Review. Each call requires the user's confirmation. Returns the price before and after the change.",
     inputSchema: z.object({
       bundleId: appArguments.bundleId,
-      price: z.literal('FREE').describe('価格。いまは FREE（無料）だけ'),
-      baseTerritory: territoryId.default('JPN').describe('基準の国の ID（例: JPN、USA）'),
+      price: z.literal('FREE').describe('Price. The only supported value is FREE'),
+      baseTerritory: territoryId
+        .default('JPN')
+        .describe('ID of the base territory (for example, JPN or USA)'),
     }),
     annotations: {
       readOnlyHint: false,
@@ -365,26 +381,28 @@ server.registerTool(
 server.registerTool(
   'set_availability',
   {
-    title: '配信する国を入れる',
+    title: 'Set territories',
     description:
-      'アプリを配信する国を入れる。国の ID の一覧（territories）か、同じ国にするアプリのバンドル ID（sameAsApp）の、どちらか一方を渡す。渡した国だけで配信し、ほかの国では配信しない。配信の設定がまだ無ければ作り、あれば国ごとに変える。公開済みのアプリでは、審査なしで、すぐ利用者に届く。Mac と Apple Vision Pro での配信は API に無いので、変えない。呼ぶたびに、利用者の確認が要る。変える前と後の国を返す。',
+      "Sets the territories where the app is available. Pass either a list of territory IDs (territories) or the bundle ID of an app whose territories to match (sameAsApp), not both. Makes the app available only in those territories and removes it from all others. Creates the availability settings if they do not exist; otherwise changes each territory. For a released app, the change reaches users immediately, without App Review. Does not change availability on Mac or Apple Vision Pro, because the API does not support it. Each call requires the user's confirmation. Returns the territories before and after the change.",
     inputSchema: z.object({
       bundleId: appArguments.bundleId,
       territories: z
         .array(territoryId)
         .min(1)
         .optional()
-        .describe('配信する国の ID（例: ["JPN", "USA"]）'),
+        .describe('IDs of the territories (for example, ["JPN", "USA"])'),
       sameAsApp: z
         .string()
         .min(1)
         .optional()
-        .describe('配信する国を同じにするアプリのバンドル ID（例: com.ihideck.machosterone）'),
+        .describe(
+          'Bundle ID of the app whose territories to match (for example, com.example.myapp)',
+        ),
       availableInNewTerritories: z
         .boolean()
         .optional()
         .describe(
-          'App Store が新しい国を足したとき、自動で配信するか。配信の設定を初めて作るときだけ入れられる。省くと、sameAsApp のアプリと同じにする（territories のときは false）',
+          'Whether to make the app available automatically in new territories that the App Store adds. You can set this only when the availability settings are first created. If omitted, matches the sameAsApp app (false when you pass territories)',
         ),
     }),
     annotations: {
@@ -401,16 +419,18 @@ server.registerTool(
 server.registerTool(
   'submit_for_review',
   {
-    title: '審査に出す',
+    title: 'Submit for App Review',
     description:
-      '版を審査に出す。出す前に、ビルドが選んであり、そのビルドの版が版の番号と同じで、処理が済み、輸出コンプライアンスの答えがあることを確かめる。作りかけの提出があれば、それを使う。もう審査に出してある版は、そのまま返す。呼ぶたびに、利用者の確認が要る。出す前と後の状態を返す。',
+      "Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the submission.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('審査に出す版（例: 1.0.2）。省くと、編集できる版を出す'),
+        .describe(
+          'Version to submit (for example, 1.0.2). If omitted, submits the editable version',
+        ),
     }),
     annotations: {
       readOnlyHint: false,
@@ -426,16 +446,18 @@ server.registerTool(
 server.registerTool(
   'cancel_review',
   {
-    title: '審査を取り下げる',
+    title: 'Withdraw from App Review',
     description:
-      '審査待ち・審査中の版を、審査から取り下げる。取り下げた版は、編集できるようになる。審査に出していない版は、そのまま返す。呼ぶたびに、利用者の確認が要る。取り下げる前と後の状態を返す。',
+      "Withdraws a version that is waiting for App Review or in App Review. The withdrawn version becomes editable. If the version is not submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the withdrawal.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('取り下げる版（例: 1.0.2）。省くと、審査に出している版を取り下げる'),
+        .describe(
+          'Version to withdraw (for example, 1.0.2). If omitted, withdraws the submitted version',
+        ),
     }),
     annotations: {
       readOnlyHint: false,
@@ -451,16 +473,18 @@ server.registerTool(
 server.registerTool(
   'release_version',
   {
-    title: '版を公開する',
+    title: 'Release version',
     description:
-      '審査が通り、手動の公開を待っている版（PENDING_DEVELOPER_RELEASE）を、App Store に公開する。公開は取り消せない。公開済みの版は、そのまま返す。段階的リリースを付けた版は、公開すると段階的リリースが始まる。呼ぶたびに、利用者の確認が要る。公開する前と後の版を返す。',
+      "Releases a version that passed App Review and is waiting for manual release (PENDING_DEVELOPER_RELEASE) to the App Store. You cannot undo a release. If the version is already released, returns without changes. If the version has a phased release, releasing it starts the phased release. Each call requires the user's confirmation. Returns the version before and after the release.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
         .string()
         .min(1)
         .optional()
-        .describe('公開する版（例: 1.0.2）。省くと、公開を待っている版を公開する'),
+        .describe(
+          'Version to release (for example, 1.0.2). If omitted, releases the version that is waiting for release',
+        ),
     }),
     annotations: {
       readOnlyHint: false,
@@ -476,9 +500,9 @@ server.registerTool(
 server.registerTool(
   'set_phased_release',
   {
-    title: '段階的リリースを変える',
+    title: 'Change phased release',
     description:
-      '進めている段階的リリースを、止める（pause）・再開する（resume）・全員に出す（complete）。全員に出すのは取り消せない。もうその状態なら、そのまま返す。まだ始まっていない・もう終わった段階的リリースは変えない。呼ぶたびに、利用者の確認が要る。変える前と後の版を返す。',
+      "Pauses (pause), resumes (resume), or completes (complete) an active phased release. Completing releases the update to all users, and you cannot undo it. If the phased release is already in that state, returns without changes. Does not change a phased release that has not started or has already finished. Each call requires the user's confirmation. Returns the version before and after the change.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -486,12 +510,12 @@ server.registerTool(
         .min(1)
         .optional()
         .describe(
-          '段階的リリースを変える版（例: 1.0.2）。省くと、段階的リリースを進めている版を変える',
+          'Version whose phased release to change (for example, 1.0.2). If omitted, uses the version with an active phased release',
         ),
       action: z
         .enum(PHASED_RELEASE_ACTIONS)
         .describe(
-          'pause は止める、resume は再開する、complete は残りの利用者にも、すぐに全員に出す',
+          'pause pauses the phased release, resume resumes it, and complete releases the update immediately to all remaining users',
         ),
     }),
     annotations: {

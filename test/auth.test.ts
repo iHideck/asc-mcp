@@ -69,7 +69,9 @@ describe('loadCredentials と signToken', () => {
     const result = loadCredentials(env, await emptyHome());
 
     await expect(result).rejects.toThrow(ConfigError);
-    await expect(result).rejects.toThrow(/Issuer ID と Key ID.*\/plugin configure asc-mcp@asc-mcp/);
+    await expect(result).rejects.toThrow(
+      /Issuer ID and Key ID.*\/plugin configure asc-mcp@asc-mcp/,
+    );
   });
 
   it('秘密鍵のファイルが無いときは、置く場所を返す', async () => {

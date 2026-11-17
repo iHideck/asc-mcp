@@ -16,34 +16,34 @@ type FieldRule = { label: string; resource: Resource; limit?: number; url?: true
 
 // キーワードの上限は、Apple の文書では100バイトだが、実際は文字の数で数える（日本語で191バイトのキーワードが公開されている）
 const FIELDS = {
-  description: { label: '概要', resource: 'appStoreVersionLocalizations', limit: 4000 },
+  description: { label: 'Description', resource: 'appStoreVersionLocalizations', limit: 4000 },
   keywords: {
-    label: 'キーワード',
+    label: 'Keywords',
     resource: 'appStoreVersionLocalizations',
     limit: 100,
-    note: 'カンマで区切る',
+    note: 'Separate keywords with commas',
   },
   promotionalText: {
-    label: 'プロモーション用テキスト',
+    label: 'Promotional Text',
     resource: 'appStoreVersionLocalizations',
     limit: 170,
   },
   whatsNew: {
-    label: '新機能',
+    label: "What's New",
     resource: 'appStoreVersionLocalizations',
     limit: 4000,
-    note: '初めて出す版には無いので飛ばす',
+    note: "Skipped for the first release, which has no What's New text",
   },
-  supportUrl: { label: 'サポート URL', resource: 'appStoreVersionLocalizations', url: true },
+  supportUrl: { label: 'Support URL', resource: 'appStoreVersionLocalizations', url: true },
   marketingUrl: {
-    label: 'マーケティング URL',
+    label: 'Marketing URL',
     resource: 'appStoreVersionLocalizations',
     url: true,
   },
-  name: { label: '名前', resource: 'appInfoLocalizations', limit: 30 },
-  subtitle: { label: 'サブタイトル', resource: 'appInfoLocalizations', limit: 30 },
+  name: { label: 'Name', resource: 'appInfoLocalizations', limit: 30 },
+  subtitle: { label: 'Subtitle', resource: 'appInfoLocalizations', limit: 30 },
   privacyPolicyUrl: {
-    label: 'プライバシーポリシーの URL',
+    label: 'Privacy Policy URL',
     resource: 'appInfoLocalizations',
     url: true,
   },
@@ -57,7 +57,10 @@ function rule(name: FieldName): FieldRule {
 }
 
 export const localizationInput = z.object({
-  locale: z.string().min(1).describe('言語のコード（例: ja、en-US）。get_localizations で見られる'),
+  locale: z
+    .string()
+    .min(1)
+    .describe('The locale code, such as ja or en-US. get_localizations shows the codes.'),
   ...(Object.fromEntries(
     FIELD_NAMES.map((name) => [
       name,
@@ -129,7 +132,7 @@ export async function setLocalizations(
         skipped.push({
           locale: entry.locale,
           field: name,
-          reason: '初めて出す版には、新機能の文がありません',
+          reason: "The first release has no What's New text",
         });
         continue;
       }
@@ -147,12 +150,13 @@ export async function setLocalizations(
   const writes = plan(wanted, before);
   const progress = trackProgress();
   for (const { resource, id, locale, fields, attributes } of writes) {
-    const what = `${locale} の${fields.map((field) => rule(field).label).join('・')}`;
-    await progress.write(`${what}を変える`, `${what}を変えました`, () =>
+    const what = `${fields.map((field) => rule(field).label).join(', ')} for ${locale}`;
+    await progress.write(`updating the ${what}`, `Updated the ${what}`, () =>
       client.update(resource, id, attributes),
     );
   }
-  const after = writes.length === 0 ? before : await progress.read('変えた文を読み直す', read);
+  const after =
+    writes.length === 0 ? before : await progress.read('rereading the changed text', read);
   const changes = writes.flatMap((write) =>
     write.fields.map((field) => ({
       locale: write.locale,
@@ -171,7 +175,7 @@ export async function setLocalizations(
       stored === (wanted.find((entry) => entry.locale === locale)?.values[field] ?? null)
         ? []
         : [
-            `App Store Connect の値が、頼んだものと違います: ${locale} の${rule(field).label}（Apple が直したかもしれません。get_localizations で確かめてください）`,
+            `The value in App Store Connect differs from the requested value: ${rule(field).label} for ${locale} (Apple may have corrected it. Check it with get_localizations.)`,
           ],
     ),
   };
@@ -183,7 +187,7 @@ function checkTexts(localizations: LocalizationInput[]): void {
     ...new Set(locales.filter((locale, index) => locales.indexOf(locale) !== index)),
   ];
   const problems = repeated.map(
-    (locale) => `言語 ${locale} が2回以上あります。1つにまとめてください`,
+    (locale) => `Locale ${locale} appears more than once. Merge the entries into one`,
   );
   for (const entry of localizations) {
     for (const name of FIELD_NAMES) {
@@ -194,16 +198,16 @@ function checkTexts(localizations: LocalizationInput[]): void {
       const { label, limit, url } = rule(name);
       const length = [...value].length;
       if (limit !== undefined && length > limit) {
-        problems.push(`${entry.locale} の${label}: ${length} 文字（${limit} 文字まで）`);
+        problems.push(`${label} for ${entry.locale}: ${length} characters (limit: ${limit})`);
       }
       if (url === true && !isWebUrl(value)) {
-        problems.push(`${entry.locale} の${label}: http か https の URL ではありません`);
+        problems.push(`${label} for ${entry.locale}: not an http or https URL`);
       }
     }
   }
   if (problems.length > 0) {
     throw new Error(
-      `入れる前に確かめたら、合わない所がありました。何も変えていません。\n${problems.map((problem) => `- ${problem}`).join('\n')}`,
+      `The check before writing found problems. Nothing was changed.\n${problems.map((problem) => `- ${problem}`).join('\n')}`,
     );
   }
 }
@@ -234,7 +238,7 @@ async function editableAppInfoLocalizations(client: AscClient, appleId: string) 
   const editable = await findEditableAppInfo(
     client,
     appleId,
-    '名前・サブタイトル・プライバシーポリシーの URL',
+    'name, subtitle, and privacy policy URL',
   );
   return readAppInfoLocalizations(client, editable.id);
 }
@@ -252,11 +256,11 @@ function plan(wanted: Wanted[], current: Snapshot): Write[] {
       }
       const target = current[resource].find((candidate) => candidate.locale === locale);
       if (target === undefined) {
-        const known = current[resource].map((candidate) => candidate.locale).join('、');
+        const known = current[resource].map((candidate) => candidate.locale).join(', ');
         missing.push(
           resource === 'appInfoLocalizations'
-            ? `言語 ${locale} の、App 情報の文はありません。App 情報の言語は ${known} です`
-            : `言語 ${locale} の、版の文はありません。版の言語は ${known} です`,
+            ? `No App Information text exists for locale ${locale}. The App Information locales are ${known}`
+            : `No version text exists for locale ${locale}. The version locales are ${known}`,
         );
         continue;
       }
@@ -274,7 +278,7 @@ function plan(wanted: Wanted[], current: Snapshot): Write[] {
   }
   if (missing.length > 0) {
     throw new Error(
-      `${missing.join('。\n')}。\n言語を足すのは、App Store Connect の画面で行ってください。何も変えていません。`,
+      `${missing.join('.\n')}.\nAdd locales in App Store Connect. Nothing was changed.`,
     );
   }
   return writes;
@@ -291,11 +295,12 @@ function isWebUrl(value: string): boolean {
 function describeField({ label, limit, url, note }: FieldRule): string {
   return [
     label,
-    limit === undefined ? undefined : `${limit} 文字まで`,
-    url === true ? 'http か https の URL' : undefined,
+    limit === undefined ? undefined : `Up to ${limit} characters`,
+    url === true ? 'An http or https URL' : undefined,
     note,
-    'null か空の文字にすると消す。省くと変えない',
+    'Pass null or an empty string to delete the value. Omit the field to keep the value',
   ]
     .filter((part) => part !== undefined)
-    .join('。');
+    .join('. ')
+    .concat('.');
 }

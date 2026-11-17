@@ -388,7 +388,7 @@ describe('replaceScreenshots', () => {
     const message = await failureOf(replace(fetchFn, request('summary')));
 
     expect(message).toContain('503');
-    expect(message).toContain('やり直すと');
+    expect(message).toContain('same call again');
     expect(sentWrites(fetchFn)).toEqual([
       reservation('summary'),
       { method: 'PUT', path: '/new1/part1', body: undefined },
@@ -574,7 +574,9 @@ describe('replaceScreenshots', () => {
     ]);
     expect(result.removed).toHaveLength(10);
     expect(result.warnings).toEqual([
-      expect.stringContaining('まだ写真（2_report.png、3_summary.png）を処理しているので'),
+      expect.stringContaining(
+        'Apple is still processing screenshots (2_report.png, 3_summary.png)',
+      ),
     ]);
   });
 
@@ -635,7 +637,9 @@ describe('replaceScreenshots', () => {
 
     const message = await failureOf(replace(fetchFn, request('summary')));
 
-    expect(message).toContain('まだ写真（1_question.png）を処理しているので、何も変えていません');
+    expect(message).toContain(
+      'Nothing was changed because Apple is still processing screenshots (1_question.png)',
+    );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -696,7 +700,7 @@ describe('replaceScreenshots', () => {
 
     const message = await failureOf(replace(fetchFn, request('summary')));
 
-    expect(message).toContain('写真 3_summary.png を上げました');
+    expect(message).toContain('Uploaded screenshot 3_summary.png');
     expect(message).toContain('3_summary.png: IMAGE_TOOL_FAILURE: 画像を処理できませんでした');
     expect(sentWrites(fetchFn)).toEqual(uploadWrites('new1', 'summary'));
   });
@@ -721,7 +725,7 @@ describe('replaceScreenshots', () => {
     expect(sentWrites(fetchFn)).toEqual(uploadWrites('new1', 'summary'));
     expect(result).toMatchObject({ uploaded: ['3_summary.png'], removed: [] });
     expect(result.warnings).toEqual([
-      expect.stringContaining('まだ写真（3_summary.png）を処理しているので'),
+      expect.stringContaining('Apple is still processing screenshots (3_summary.png)'),
     ]);
     expect(wait).toHaveBeenCalledTimes(POLL_ROUNDS - 1);
   });
@@ -736,24 +740,24 @@ describe('replaceScreenshots', () => {
 
     const message = await failureOf(replace(fetchFn, { ...request(), files }));
 
-    expect(message).toContain('何も変えていません');
-    expect(message).toContain('1179x2556・2556x1179・1206x2622・2622x1206');
+    expect(message).toContain('Nothing was changed');
+    expect(message).toContain('1179x2556, 2556x1179, 1206x2622, 2622x1206');
     expect(message).toContain(
-      `${pathOf('large')}: 1320x2868 は、この欄の大きさではありません（APP_IPHONE_67 の欄の大きさです）`,
+      `${pathOf('large')}: 1320x2868 is not a size for this display type (it fits APP_IPHONE_67)`,
     );
     expect(message).toContain(
-      `${pathOf('ipad')}: 2064x2752 は、この欄の大きさではありません（APP_IPAD_PRO_3GEN_129 の欄の大きさです）`,
+      `${pathOf('ipad')}: 2064x2752 is not a size for this display type (it fits APP_IPAD_PRO_3GEN_129)`,
     );
     expect(message).toContain(
-      `${pathOf('progressive')}: 1668x2224 は、この欄の大きさではありません（APP_IPAD_105 の欄の大きさです）`,
+      `${pathOf('progressive')}: 1668x2224 is not a size for this display type (it fits APP_IPAD_105)`,
     );
     for (const unreadable of ['text', 'shortPng', 'shortJpeg'] as const) {
       expect(message).toContain(
-        `${pathOf(unreadable)}: PNG か JPEG の写真として、大きさを読めません`,
+        `${pathOf(unreadable)}: Cannot read the size as a PNG or JPEG image`,
       );
     }
-    expect(message).toContain(`${join(dir, 'missing.png')}: ファイルがありません`);
-    expect(message).toContain('shots/1_question.png: 絶対パスで渡してください');
+    expect(message).toContain(`${join(dir, 'missing.png')}: The file does not exist`);
+    expect(message).toContain('shots/1_question.png: Pass an absolute path');
     expect(message).not.toContain(`${pathOf('question')}:`);
     expect(fetchFn).not.toHaveBeenCalled();
   });
@@ -762,7 +766,7 @@ describe('replaceScreenshots', () => {
     const fetchFn = fakeFetch(routes({}));
 
     await expect(replace(fetchFn, { ...request('question'), locale: 'en-US' })).rejects.toThrow(
-      '版 1.1.0 に、言語 en-US はありません。ある言語は ja です。',
+      'Version 1.1.0 has no locale en-US. The available locales are ja.',
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -774,7 +778,7 @@ describe('replaceScreenshots', () => {
 
     await expect(
       replace(fetchFn, { ...request('question'), versionString: '1.1.0' }),
-    ).rejects.toThrow('版 1.1.0 は、いま WAITING_FOR_REVIEW なので変えられません');
+    ).rejects.toThrow('Cannot change version 1.1.0 because its state is WAITING_FOR_REVIEW');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -785,7 +789,9 @@ describe('replaceScreenshots', () => {
 
     await expect(
       replace(fetchFn, request('summary', 'question'), { readOnly: true }),
-    ).rejects.toThrow('送りませんでした: POST /v1/appScreenshots');
+    ).rejects.toThrow(
+      'Did not send this request because the server runs in read-only mode: POST /v1/appScreenshots',
+    );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 

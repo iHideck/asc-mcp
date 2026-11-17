@@ -205,11 +205,11 @@ describe('setAvailability', () => {
     const neither = fakeFetch({});
 
     await expect(set(unknown, { territories: ['JPN', 'JAP'] })).rejects.toThrow(
-      '国の ID JAP はありません',
+      'Unknown territory IDs: JAP.',
     );
-    await expect(set(neither, {})).rejects.toThrow('どちらか一方を渡してください');
+    await expect(set(neither, {})).rejects.toThrow('but not both');
     await expect(set(neither, { territories: ['JPN'], sameAsApp: SOURCE })).rejects.toThrow(
-      'どちらか一方を渡してください',
+      'but not both',
     );
     expect(sentWrites(unknown)).toEqual([]);
     expect(neither).not.toHaveBeenCalled();
@@ -239,10 +239,12 @@ describe('setAvailability', () => {
 
     await expect(
       set(explicit, { territories: ['JPN', 'GBR'], availableInNewTerritories: true }),
-    ).rejects.toThrow('一度入れると API では変えられません');
+    ).rejects.toThrow('the API cannot change it');
     const result = await set(copied, { sameAsApp: SOURCE });
 
     expect([...sentWrites(explicit), ...sentWrites(copied)]).toEqual([]);
-    expect(result.warnings).toEqual([expect.stringContaining('新しい国でも自動で配信するか')]);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('available in new territories automatically'),
+    ]);
   });
 });

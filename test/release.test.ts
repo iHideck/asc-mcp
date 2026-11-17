@@ -103,9 +103,9 @@ describe('releaseVersion', () => {
 
     await expect(
       releaseVersion(client(fetchFn), { ...request, versionString: '1.0.2' }),
-    ).rejects.toThrow(/いま WAITING_FOR_REVIEW なので公開できません/);
+    ).rejects.toThrow(/because it is WAITING_FOR_REVIEW/);
     await expect(releaseVersion(client(fetchFn), request)).rejects.toThrow(
-      '公開を待っている版（審査が通り、手動の公開を待っている版）がありません。',
+      'No version is waiting for release (passed App Review and waiting for a manual release).',
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -163,9 +163,9 @@ describe('setPhasedRelease', () => {
 
   it('まだ始まっていない・もう終わった・無い段階的リリースは変えない', async () => {
     const cases = [
-      [versions(PENDING_RELEASE_STATE, 'INACTIVE'), 'pause', /まだ始まっていません/],
-      [versions('READY_FOR_DISTRIBUTION', 'COMPLETE'), 'resume', /もう終わっています/],
-      [versions('READY_FOR_DISTRIBUTION'), 'pause', /段階的リリースがありません/],
+      [versions(PENDING_RELEASE_STATE, 'INACTIVE'), 'pause', /has not started yet/],
+      [versions('READY_FOR_DISTRIBUTION', 'COMPLETE'), 'resume', /has already ended/],
+      [versions('READY_FOR_DISTRIBUTION'), 'pause', /has no phased release/],
     ] as const;
     for (const [listed, action, message] of cases) {
       const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: listed });

@@ -176,8 +176,8 @@ describe('copyReviewContact', () => {
     const rejected = await failureOf(copy(rejecting));
     const readOnly = await failureOf(copy(fakeFetch(routes(detail('r100'))), true));
 
-    expect(rejected).toContain('（伏せた）');
-    expect(readOnly).toContain('送りませんでした');
+    expect(rejected).toContain('(hidden)');
+    expect(readOnly).toContain('Did not send this request');
     expect([containsContact(rejected), containsContact(readOnly)]).toEqual([false, false]);
   });
 
@@ -187,7 +187,7 @@ describe('copyReviewContact', () => {
       '/v1/appStoreVersions/s100/appStoreReviewDetail': jsonResponse(200, { data: null }),
     });
 
-    await expect(copy(fetchFn)).rejects.toThrow('そろった審査の連絡先がありません');
+    await expect(copy(fetchFn)).rejects.toThrow('has a complete App Review contact');
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -203,7 +203,7 @@ describe('copyReviewContact', () => {
           fromBundleId: BUNDLE_ID,
         },
       ),
-    ).rejects.toThrow('同じアプリです');
+    ).rejects.toThrow('are the same app');
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });

@@ -10,7 +10,7 @@ import {
 } from './versions.ts';
 
 const ENCRYPTION_WARNING =
-  '輸出コンプライアンス（暗号の使用）の答えが、このビルドにありません。審査に出す前に、App Store Connect で答えてください。Info.plist に ITSAppUsesNonExemptEncryption を入れると、次のビルドからは答えが要りません。';
+  'The build has no export compliance answer (encryption use). Answer it in App Store Connect before you submit for App Review. If you add ITSAppUsesNonExemptEncryption to Info.plist, later builds do not need the answer.';
 
 export type SelectBuildRequest = {
   bundleId: string;
@@ -43,13 +43,13 @@ export async function selectBuild(
   if (build === undefined) {
     throw new Error(
       builds.length === 0
-        ? `版 ${versionString} のビルドがありません。選べるのは、ビルドの版（CFBundleShortVersionString）が版の番号と同じビルドだけです。上げたビルドの版は、get_release_status で見られます。`
-        : `版 ${versionString} のビルド ${request.buildNumber} はありません。この版のビルドは ${builds.map(({ attributes }) => attributes.version).join('・')} です。`,
+        ? `Version ${versionString} has no builds. You can select only a build whose version (CFBundleShortVersionString) matches the version number. get_release_status shows the versions of the uploaded builds.`
+        : `Version ${versionString} has no build ${request.buildNumber}. The builds for this version are ${builds.map(({ attributes }) => attributes.version).join(', ')}.`,
     );
   }
   const unusable = unusableReason(build);
   if (unusable !== undefined) {
-    throw new Error(`ビルド ${request.buildNumber} は選べません。${unusable}`);
+    throw new Error(`Cannot select build ${request.buildNumber}. ${unusable}`);
   }
   const warnings = build.attributes.usesNonExemptEncryption === null ? [ENCRYPTION_WARNING] : [];
   const result = (
@@ -61,26 +61,26 @@ export async function selectBuild(
   }
   const progress = trackProgress();
   await progress.write(
-    `版 ${versionString} にビルド ${request.buildNumber} を選ぶ`,
-    `版 ${versionString} にビルド ${request.buildNumber} を選びました`,
+    `selecting build ${request.buildNumber} for version ${versionString}`,
+    `Selected build ${request.buildNumber} for version ${versionString}`,
     () =>
       client.setRelationship('appStoreVersions', version.id, 'build', {
         type: 'builds',
         id: build.id,
       }),
   );
-  const after = await progress.read('選んだ版を読み直す', async () => {
+  const after = await progress.read('rereading the version', async () => {
     const found = (await listVersions(client, app.appleId, request.platform)).find(
       ({ id }) => id === version.id,
     );
     if (found === undefined) {
-      throw new Error(`版 ${versionString} を、読み直せませんでした。`);
+      throw new Error(`Could not reread version ${versionString}.`);
     }
     return found;
   });
   if (after.buildId !== build.id) {
     warnings.push(
-      `App Store Connect の値が、頼んだものと違います: 選んであるビルドが ${after.status.build?.buildNumber ?? '無し'} です（頼んだのは ${request.buildNumber}）`,
+      `The value in App Store Connect differs from the requested value: the selected build is ${after.status.build?.buildNumber ?? 'none'} (requested: ${request.buildNumber})`,
     );
   }
   return result(version.status.build, after.status.build);

@@ -147,10 +147,10 @@ export function isFirstRelease(versions: Version[]): boolean {
 export function notEditableError({ status }: Version): Error {
   const next =
     status.state === 'READY_FOR_REVIEW'
-      ? 'この版は、まだ出していない審査への提出に入っています。submit_for_review で出すか、App Store Connect で提出から外してください。'
-      : '審査中の版は、審査から外すと変えられるようになります。';
+      ? 'The version is in a review submission that is not submitted yet. Submit it with submit_for_review, or remove the version from the submission in App Store Connect.'
+      : 'A version in App Review becomes editable after you withdraw it from App Review.';
   return new Error(
-    `版 ${status.versionString} は、いま ${status.state} なので変えられません。変えられるのは、提出の準備中か、却下されたあとの版です。${next}`,
+    `Cannot change version ${status.versionString} because its state is ${status.state}. You can change only a version that is being prepared for submission or that was rejected. ${next}`,
   );
 }
 
@@ -165,8 +165,8 @@ export function pickEditableVersion(
   if (version === undefined) {
     throw new Error(
       versionString === undefined
-        ? '編集できる版（提出の準備中か、却下されたあとの版）がありません。ensure_version で、次に出す版を用意してください。'
-        : `版 ${versionString} はありません。ensure_version で、次に出す版を用意してください。`,
+        ? 'No editable version exists (a version that is being prepared for submission or that was rejected). Use ensure_version to prepare the next version.'
+        : `Version ${versionString} does not exist. Use ensure_version to prepare the next version.`,
     );
   }
   if (!isEditable(version)) {

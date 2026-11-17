@@ -247,7 +247,7 @@ describe('ensureVersion', () => {
 
     expect(sentWrites(fetchFn)).toEqual([]);
     expect(result.skipped).toEqual([
-      { field: 'phasedRelease', reason: expect.stringContaining('初めて出す版') },
+      { field: 'phasedRelease', reason: expect.stringContaining('first version') },
     ]);
   });
 
@@ -259,7 +259,7 @@ describe('ensureVersion', () => {
     });
 
     await expect(ensure(fetchFn, { releaseType: 'MANUAL' })).rejects.toThrow(
-      /1\.0\.2 は、いま WAITING_FOR_REVIEW なので変えられません/,
+      /Cannot change version 1\.0\.2 because its state is WAITING_FOR_REVIEW/,
     );
     const same = await ensure(fetchFn, { releaseType: 'AFTER_APPROVAL' });
 
@@ -275,7 +275,7 @@ describe('ensureVersion', () => {
     );
     await expect(
       ensure(fetchFn, { releaseType: 'MANUAL', earliestReleaseDate: '2026-12-01T10:00:00+09:00' }),
-    ).rejects.toThrow(/SCHEDULED にするときだけ/);
+    ).rejects.toThrow(/only when you set releaseType to SCHEDULED/);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -311,7 +311,7 @@ describe('ensureVersion', () => {
     });
 
     await expect(ensure(fetchFn)).rejects.toThrow(
-      /socket hang up[\s\S]*届いたかは分かりません[\s\S]*やり直す/,
+      /socket hang up[\s\S]*may or may not have reached[\s\S]*same call again/,
     );
   });
 
@@ -328,7 +328,7 @@ describe('ensureVersion', () => {
     );
 
     await expect(result).rejects.toThrow(
-      /送りませんでした: POST \/v1\/appStoreVersions .*"versionString":"1\.0\.2"/,
+      /Did not send this request because the server runs in read-only mode: POST \/v1\/appStoreVersions .*"versionString":"1\.0\.2"/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -338,7 +338,7 @@ describe('ensureVersion', () => {
     const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([editing, live]) });
 
     await expect(ensure(fetchFn, { versionString: '1.0.1' })).rejects.toThrow(
-      '版 1.0.1 は、公開したことのある番号です（READY_FOR_DISTRIBUTION）。次に出す版は、1.0.1 より大きい番号にしてください。',
+      'Version 1.0.1 was already released (READY_FOR_DISTRIBUTION). Use a number greater than 1.0.1 for the next version.',
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -348,7 +348,7 @@ describe('ensureVersion', () => {
     const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([waiting, live]) });
 
     await expect(ensure(fetchFn, { versionString: '1.0.3' })).rejects.toThrow(
-      /版 1\.0\.2 が、いま WAITING_FOR_REVIEW なので、新しい版はまだ作れません/,
+      /You cannot create a new version yet because version 1\.0\.2 is WAITING_FOR_REVIEW/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
@@ -357,7 +357,9 @@ describe('ensureVersion', () => {
     const waiting = version('v102', '1.0.2', 'WAITING_FOR_REVIEW', DRAFT_CREATED);
     const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([waiting, live]) });
 
-    await expect(ensure(fetchFn, { phasedRelease: true })).rejects.toThrow(/審査から外すと/);
+    await expect(ensure(fetchFn, { phasedRelease: true })).rejects.toThrow(
+      /after you withdraw it from App Review/,
+    );
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -376,7 +378,9 @@ describe('ensureVersion', () => {
     const result = await ensure(fetchFn);
 
     expect(result.warnings).toEqual([
-      expect.stringMatching(/選んであるビルド 5 は、前の番号のときのビルドです[\s\S]*select_build/),
+      expect.stringMatching(
+        /the selected build 5 was built for the previous number[\s\S]*select_build/,
+      ),
     ]);
   });
 
@@ -443,7 +447,7 @@ describe('ensureVersion', () => {
     });
 
     await expect(ensure(failing, { phasedRelease: true })).rejects.toThrow(
-      /^版 1\.0\.2 を作りました。段階的リリースを付けるところで止まりました。同じ呼び出しをやり直すと、残りだけを行います。\n[\s\S]*500/,
+      /^Created version 1\.0\.2\. Stopped while turning on phased release\. Make the same call again to do only the rest\.\n[\s\S]*500/,
     );
     await ensure(retrying, { phasedRelease: true });
 
@@ -460,7 +464,7 @@ describe('ensureVersion', () => {
     const result = await ensure(fetchFn, { releaseType: 'MANUAL' });
 
     expect(result.warnings).toEqual([
-      'App Store Connect の値が、頼んだものと違います: 公開のしかたが AFTER_APPROVAL です（頼んだのは MANUAL）',
+      'The value in App Store Connect differs from the request: the release type is AFTER_APPROVAL (requested: MANUAL)',
     ]);
   });
 
@@ -494,13 +498,13 @@ describe('ensureVersion', () => {
         releaseType: 'SCHEDULED',
         earliestReleaseDate: '2026-12-01T10:30:00+09:00',
       }),
-    ).rejects.toThrow(/正時/);
+    ).rejects.toThrow(/on the hour/);
     await expect(
       ensure(fetchFn, {
         releaseType: 'SCHEDULED',
         earliestReleaseDate: '2026-11-01T10:00:00+09:00',
       }),
-    ).rejects.toThrow(/もう過ぎています/);
+    ).rejects.toThrow(/is in the past/);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 

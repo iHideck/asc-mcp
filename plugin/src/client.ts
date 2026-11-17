@@ -131,18 +131,18 @@ const AssociatedErrors = z.object({
 });
 
 const HINTS: Partial<Record<number, string>> = {
-  401: 'Issuer ID・Key ID・秘密鍵が、同じ API キーのものかを確かめてください。キーを無効にしていないかも確かめてください。',
-  403: 'API キーのロールでは、この操作ができません。',
-  429: 'API キーごとの、1時間あたりの呼び出しの上限に達しました。しばらく待ってから、やり直してください。',
+  401: 'Check that the Issuer ID, Key ID, and private key belong to the same API key. Also check that the key is not revoked.',
+  403: 'The role of the API key does not allow this operation.',
+  429: 'You reached the hourly request limit for this API key. Wait a while, then try again.',
 };
 
 // 書くツールは、いまの状態を読んでから差だけを変えるので、やり直しても二重には変えない
-const RETRY_HINT = '同じ呼び出しをやり直すと、いまの状態に合わせて続きを行います。';
-const WRITE_UNKNOWN_HINT = `変更が App Store Connect に届いたかは分かりません。${RETRY_HINT}`;
+const RETRY_HINT = 'Make the same call again to continue from the current state.';
+const WRITE_UNKNOWN_HINT = `The change may or may not have reached App Store Connect. ${RETRY_HINT}`;
 
 // Apple は、新しい契約に同意するまで、このコードの 403 を返す。ロールの不足とは直し方が違う
 const AGREEMENT_HINT =
-  'Account Holder が App Store Connect か Apple Developer のサイトにサインインし、新しい契約に同意してください。API キーを作り直しても直りません。';
+  'The Account Holder must sign in to App Store Connect or the Apple Developer website and accept the new agreements. Creating a new API key does not fix this.';
 
 // 書かない設定は、値が無いか 0 のときだけ外す。打ち間違い（true など）で、本番に書いてしまわないため
 export function isReadOnly(value: string | undefined): boolean {
@@ -157,11 +157,11 @@ export function createClient(
   async function call(method: Method, url: URL, body?: object): Promise<unknown> {
     // 次のページの URL は応答から受け取る。App Store Connect API 以外には、トークンを送らない
     if (url.origin !== ORIGIN) {
-      throw new Error(`App Store Connect API 以外の URL は呼びません: ${url.origin}`);
+      throw new Error(`Does not call URLs outside the App Store Connect API: ${url.origin}`);
     }
     if (readOnly && method !== 'GET') {
       throw new Error(
-        `書かない設定で動いているので、次のリクエストを送りませんでした: ${method} ${url.pathname}${body === undefined ? '' : ` ${JSON.stringify(body)}`}`,
+        `Did not send this request because the server runs in read-only mode: ${method} ${url.pathname}${body === undefined ? '' : ` ${JSON.stringify(body)}`}`,
       );
     }
     let response: Response;
@@ -177,7 +177,7 @@ export function createClient(
       });
     } catch (error) {
       throw new Error(
-        `App Store Connect API に接続できませんでした（${reasonOf(error)}）。${method === 'GET' ? '' : WRITE_UNKNOWN_HINT}`,
+        `Could not connect to the App Store Connect API (${reasonOf(error)}).${method === 'GET' ? '' : ` ${WRITE_UNKNOWN_HINT}`}`,
         { cause: error },
       );
     }
@@ -236,7 +236,7 @@ export function createClient(
       .safeParse(await call('POST', new URL(path, ORIGIN), body));
     if (!created.success) {
       throw new Error(
-        `App Store Connect API の ${path} の応答から、作ったものを読めませんでした。${WRITE_UNKNOWN_HINT}`,
+        `Could not read the created resource from the App Store Connect API response for ${path}. ${WRITE_UNKNOWN_HINT}`,
       );
     }
     return created.data.data;
@@ -276,7 +276,7 @@ export function createClient(
       const where = `${method} ${target.origin}${target.pathname}`;
       if (readOnly) {
         throw new Error(
-          `書かない設定で動いているので、次のリクエストを送りませんでした: ${where}（${length} バイト）`,
+          `Did not send this request because the server runs in read-only mode: ${where} (${length} bytes)`,
         );
       }
       let response: Response;
@@ -289,12 +289,12 @@ export function createClient(
         });
       } catch (error) {
         throw new Error(
-          `${where} に接続できませんでした（${reasonOf(error, UPLOAD_TIMEOUT_MS)}）。${RETRY_HINT}`,
+          `Could not connect to ${where} (${reasonOf(error, UPLOAD_TIMEOUT_MS)}). ${RETRY_HINT}`,
           { cause: error },
         );
       }
       if (!response.ok) {
-        throw new Error(`${where} が ${response.status} を返しました。${RETRY_HINT}`);
+        throw new Error(`${where} returned ${response.status}. ${RETRY_HINT}`);
       }
     },
   };
@@ -347,7 +347,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, path: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {
     throw new Error(
-      `App Store Connect API の ${path} の応答が、思っていた形と違います。\n${z.prettifyError(result.error)}`,
+      `The App Store Connect API response for ${path} has an unexpected shape.\n${z.prettifyError(result.error)}`,
     );
   }
   return result.data;
@@ -358,7 +358,7 @@ function reasonOf(error: unknown, timeoutMs = TIMEOUT_MS): string {
     return String(error);
   }
   if (error.name === 'TimeoutError') {
-    return `${timeoutMs / 1000}秒たっても応答がありません`;
+    return `No response after ${timeoutMs / 1000} seconds`;
   }
   // fetch は、DNS や TLS の失敗を cause に入れ、message は「fetch failed」だけにする
   return error.cause instanceof Error ? error.cause.message : error.message;
@@ -375,7 +375,7 @@ function describeError(status: number, body: unknown): string {
       ([path, associated]) => associated.map((item) => `- ${path}: ${describeDetail(item)}`),
     ),
   ]);
-  return [`App Store Connect API が ${status} を返しました。`, hint, ...details]
+  return [`The App Store Connect API returned ${status}.`, hint, ...details]
     .filter((line) => line !== undefined)
     .join('\n');
 }

@@ -103,8 +103,8 @@ describe('listApps', () => {
       error instanceof Error ? error.message : '',
     );
 
-    expect(message).toContain('契約に同意');
-    expect(message).not.toContain('ロール');
+    expect(message).toContain('accept the new agreements');
+    expect(message).not.toContain('role');
   });
 
   it('接続できないときは、fetch が隠した原因を添えて返す', async () => {
@@ -115,7 +115,7 @@ describe('listApps', () => {
     );
 
     await expect(listApps(createClient(() => 'TOKEN', fetchFn))).rejects.toThrow(
-      /接続できませんでした.*ENOTFOUND/,
+      /Could not connect.*ENOTFOUND/,
     );
   });
 
@@ -164,6 +164,6 @@ describe('findApp', () => {
         createClient(() => 'TOKEN', fetchFn),
         'com.ihideck.hikeshi',
       ),
-    ).rejects.toThrow(/com\.ihideck\.hikeshi のアプリは[\s\S]*list_apps/);
+    ).rejects.toThrow(/bundle ID com\.ihideck\.hikeshi\.[\s\S]*list_apps/);
   });
 });

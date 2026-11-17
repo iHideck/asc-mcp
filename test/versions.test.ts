@@ -21,10 +21,10 @@ function version(state: string): Version {
 describe('notEditableError', () => {
   it('まだ出していない提出に入った版には、出すか外すよう、審査中の版には、取り下げるよう返す', () => {
     expect(notEditableError(version('READY_FOR_REVIEW')).message).toMatch(
-      /まだ出していない審査への提出に入っています[\s\S]*submit_for_review/,
+      /review submission that is not submitted yet[\s\S]*submit_for_review/,
     );
     expect(notEditableError(version('WAITING_FOR_REVIEW')).message).toContain(
-      '審査から外すと変えられるようになります',
+      'becomes editable after you withdraw it from App Review',
     );
   });
 });
