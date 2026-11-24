@@ -16,6 +16,7 @@ function version(id: string, versionString: string, appVersionState: string, cre
       appVersionState,
       releaseType: 'MANUAL',
       earliestReleaseDate: null,
+      copyright: '2026 iHideck',
       createdDate,
     },
     { build: null, appStoreVersionPhasedRelease: null },

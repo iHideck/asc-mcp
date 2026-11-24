@@ -19,6 +19,7 @@ function versions(state: string, phased: string | null = null) {
           appVersionState: state,
           releaseType: 'MANUAL',
           earliestReleaseDate: null,
+          copyright: '2026 iHideck',
           createdDate: '2026-11-08T10:00:00-08:00',
         },
         {

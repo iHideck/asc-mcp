@@ -23,12 +23,14 @@ const BUNDLE_ID = 'com.ihideck.machosterone';
 const VERSIONS = `/v1/apps/${APP_ID}/appStoreVersions`;
 const DRAFT_CREATED = '2026-11-08T10:00:00-08:00';
 const NOW = Date.parse('2026-11-08T12:00:00Z');
+const COPYRIGHT = '2026 iHideck';
 
 type VersionFields = {
   releaseType?: string;
   earliestReleaseDate?: string;
   phasedRelease?: string;
   build?: string;
+  copyright?: string | null;
 };
 
 function version(
@@ -36,7 +38,13 @@ function version(
   versionString: string,
   appVersionState: string,
   createdDate: string,
-  { releaseType = 'AFTER_APPROVAL', earliestReleaseDate, phasedRelease, build }: VersionFields = {},
+  {
+    releaseType = 'AFTER_APPROVAL',
+    earliestReleaseDate,
+    phasedRelease,
+    build,
+    copyright = COPYRIGHT,
+  }: VersionFields = {},
 ) {
   return resource(
     'appStoreVersions',
@@ -47,6 +55,7 @@ function version(
       releaseType,
       earliestReleaseDate: earliestReleaseDate ?? null,
       createdDate,
+      copyright,
     },
     {
       build: build === undefined ? null : `builds:${build}`,
@@ -110,7 +119,12 @@ describe('ensureVersion', () => {
         body: {
           data: {
             type: 'appStoreVersions',
-            attributes: { platform: 'IOS', versionString: '1.0.2', releaseType: 'MANUAL' },
+            attributes: {
+              platform: 'IOS',
+              versionString: '1.0.2',
+              releaseType: 'MANUAL',
+              copyright: COPYRIGHT,
+            },
             relationships: { app: { data: { type: 'apps', id: APP_ID } } },
           },
         },
@@ -155,6 +169,76 @@ describe('ensureVersion', () => {
     expect(sentWrites(fetchFn)).toEqual([]);
     expect(requestedUrls(fetchFn).filter(({ pathname }) => pathname === VERSIONS)).toHaveLength(1);
     expect(result.after).toEqual(result.before);
+  });
+
+  it('頼まれた著作権が違えば、変える', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [page([draft(), live]), page([draft({ copyright: '2027 iHideck' }), live])],
+      'PATCH /v1/appStoreVersions/v102': jsonResponse(200, { data: draft() }),
+    });
+
+    const result = await ensure(fetchFn, { copyright: '2027 iHideck' });
+
+    expect(sentWrites(fetchFn)).toEqual([
+      {
+        method: 'PATCH',
+        path: '/v1/appStoreVersions/v102',
+        body: {
+          data: { type: 'appStoreVersions', id: 'v102', attributes: { copyright: '2027 iHideck' } },
+        },
+      },
+    ]);
+    expect(result.after.copyright).toBe('2027 iHideck');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('著作権の指定が無く、編集中の版が空なら、いちばん新しいほかの版の著作権を写す', async () => {
+    const older = version('v100', '1.0.0', 'REPLACED_WITH_NEW_VERSION', '2026-10-01T10:00:00Z', {
+      copyright: '2025 iHideck',
+    });
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: [page([draft({ copyright: '' }), live, older]), page([draft(), live, older])],
+      'PATCH /v1/appStoreVersions/v102': jsonResponse(200, { data: draft() }),
+    });
+
+    const result = await ensure(fetchFn);
+
+    expect(sentWrites(fetchFn)).toEqual([
+      {
+        method: 'PATCH',
+        path: '/v1/appStoreVersions/v102',
+        body: {
+          data: { type: 'appStoreVersions', id: 'v102', attributes: { copyright: COPYRIGHT } },
+        },
+      },
+    ]);
+    expect(result.after.copyright).toBe(COPYRIGHT);
+  });
+
+  it('写せる著作権がどの版にも無ければ、何も送らず、入れるよう知らせる', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: page([draft({ copyright: null })]),
+    });
+
+    const result = await ensure(fetchFn);
+
+    expect(sentWrites(fetchFn)).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining('has no copyright')]);
+  });
+
+  it('審査中の版は、著作権が空でも、指定が無ければ変えようとしない', async () => {
+    const waiting = version('v102', '1.0.2', 'WAITING_FOR_REVIEW', DRAFT_CREATED, {
+      copyright: null,
+    });
+    const fetchFn = fakeFetch({ '/v1/apps': app(), [VERSIONS]: page([waiting, live]) });
+
+    const result = await ensure(fetchFn);
+
+    expect(sentWrites(fetchFn)).toEqual([]);
+    expect(result.after.state).toBe('WAITING_FOR_REVIEW');
   });
 
   it('日時指定の公開をやめるときは、公開の日時も消す', async () => {

@@ -12,6 +12,7 @@ function version(state: string): Version {
       releaseType: 'MANUAL',
       earliestReleaseDate: null,
       createdDate: null,
+      copyright: null,
       build: null,
       phasedRelease: null,
     },

@@ -108,6 +108,7 @@ function version(state = 'PREPARE_FOR_SUBMISSION') {
       appVersionState: state,
       releaseType: 'MANUAL',
       earliestReleaseDate: null,
+      copyright: '2026 iHideck',
       createdDate: '2026-11-08T10:00:00Z',
     },
     { build: null, appStoreVersionPhasedRelease: null },

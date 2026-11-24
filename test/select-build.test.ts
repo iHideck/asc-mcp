@@ -31,6 +31,7 @@ function version(
       appVersionState,
       releaseType: 'AFTER_APPROVAL',
       earliestReleaseDate: null,
+      copyright: '2026 iHideck',
       createdDate,
     },
     { build: build === null ? null : `builds:${build}`, appStoreVersionPhasedRelease: null },

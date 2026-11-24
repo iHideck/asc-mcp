@@ -16,7 +16,11 @@ const VERSIONS = `/v1/apps/${APP_ID}/appStoreVersions`;
 const SUBMISSIONS = `/v1/apps/${APP_ID}/reviewSubmissions`;
 const ITEMS = '/v1/reviewSubmissions/s1/items';
 
-function versions(state: string, build: string | null = 'b12') {
+function versions(
+  state: string,
+  build: string | null = 'b12',
+  copyright: string | null = '2026 iHideck',
+) {
   return page(
     [
       resource(
@@ -27,6 +31,7 @@ function versions(state: string, build: string | null = 'b12') {
           appVersionState: state,
           releaseType: 'AFTER_APPROVAL',
           earliestReleaseDate: null,
+          copyright,
           createdDate: '2026-11-08T10:00:00-08:00',
         },
         { build: build === null ? null : `builds:${build}`, appStoreVersionPhasedRelease: null },
@@ -462,6 +467,21 @@ describe('submitForReview', () => {
       });
 
       await expect(submitForReview(client(fetchFn), request)).rejects.toThrow(message);
+      expect(sentWrites(fetchFn)).toEqual([]);
+    }
+  });
+
+  it('著作権が空なら、出さずに入れるよう返す', async () => {
+    for (const copyright of [null, '', ' ']) {
+      const fetchFn = fakeFetch({
+        '/v1/apps': app(),
+        [VERSIONS]: versions('PREPARE_FOR_SUBMISSION', 'b12', copyright),
+        [SUBMISSIONS]: submissions(),
+      });
+
+      await expect(submitForReview(client(fetchFn), request)).rejects.toThrow(
+        /has no copyright[\s\S]*ensure_version/,
+      );
       expect(sentWrites(fetchFn)).toEqual([]);
     }
   });

@@ -29,6 +29,7 @@ const AppStoreVersion = z.object({
     releaseType: z.string().nullable(),
     earliestReleaseDate: z.string().nullable(),
     createdDate: z.string().nullable(),
+    copyright: z.string().nullable(),
   }),
   relationships: z.object({ build: toOne, appStoreVersionPhasedRelease: toOne }),
 });
@@ -55,6 +56,7 @@ export type VersionStatus = {
   releaseType: string | null;
   earliestReleaseDate: string | null;
   createdDate: string | null;
+  copyright: string | null;
   build: { buildNumber: string; uploadedDate: string } | null;
   phasedRelease: {
     state: string;
@@ -102,6 +104,7 @@ export async function listVersions(
           releaseType: attributes.releaseType,
           earliestReleaseDate: attributes.earliestReleaseDate,
           createdDate: attributes.createdDate,
+          copyright: attributes.copyright,
           build:
             build === undefined
               ? null
@@ -142,6 +145,11 @@ export function isDistributed(version: Version): boolean {
 
 export function isFirstRelease(versions: Version[]): boolean {
   return !versions.some(isDistributed);
+}
+
+// Apple は、入れていない著作権を null で返すことも、空の文字で返すこともある
+export function hasCopyright({ copyright }: VersionStatus): boolean {
+  return copyright !== null && copyright.trim() !== '';
 }
 
 export function notEditableError({ status }: Version): Error {

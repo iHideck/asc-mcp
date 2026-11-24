@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file. The format is b
 - `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.
 - `set_app_info` warns about age rating questions that are not answered, even when the App Store age rating is already set.
 - When App Store Connect refuses `submit_for_review` and some age rating questions are not answered, the error lists them.
+- `ensure_version` sets the copyright (`copyright`). If you omit it and the version has none, it copies the copyright of the previous version. `get_release_status` returns the copyright of each version, and `submit_for_review` stops before submission when the copyright is empty.
 
 ## [1.0.0] - 2026-11-17
 
