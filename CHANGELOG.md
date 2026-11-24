@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed
+
+- `submit_for_review` and `cancel_review` no longer ask for confirmation in Claude Code, because you can withdraw a submission. `release_version`, `set_phased_release`, `set_price`, and `set_availability` still ask.
+
 ### Added
 
 - `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.

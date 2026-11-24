@@ -20,8 +20,8 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns, and warns about age rating questions that are not answered. |
 | `set_price` | Sets the app price. The only supported price is free. Each call requires your confirmation. |
 | `set_availability` | Sets the territories where the app is available. Pass a list of territories or an app to match. Each call requires your confirmation. |
-| `submit_for_review` | Submits a version for App Review. Checks the selected build first. If the submission is refused, lists the age rating questions that are not answered. Each call requires your confirmation. |
-| `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. Each call requires your confirmation. |
+| `submit_for_review` | Submits a version for App Review. Checks the selected build first. If the submission is refused, lists the age rating questions that are not answered. You can withdraw it with `cancel_review`. |
+| `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. |
 | `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |
 | `set_phased_release` | Pauses, resumes, or completes a phased release. You cannot undo a release to all users. Each call requires your confirmation. |
 
@@ -70,7 +70,7 @@ The MCP server also works in other MCP clients, such as Claude Desktop and Curso
 
 To run the server from source instead, run `git clone https://github.com/iHideck/asc-mcp.git` and `npm ci --prefix asc-mcp/plugin`. Then set `"command": "node"` and `"args": ["/absolute/path/to/asc-mcp/plugin/src/index.ts"]`.
 
-Tools that submit, release, or change the price or territories ask for confirmation only in Claude Code. In other clients, set the client to ask before it calls those tools. To make every tool that writes return the request instead of sending it, add `"ASC_READ_ONLY": "1"` to `env`.
+Tools that release or change the price or territories ask for confirmation only in Claude Code. In other clients, set the client to ask before it calls those tools. To make every tool that writes return the request instead of sending it, add `"ASC_READ_ONLY": "1"` to `env`.
 
 ## Development
 

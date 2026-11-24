@@ -145,14 +145,8 @@ describe('MCP サーバー', () => {
         _meta: { 'anthropic/requiresUserInteraction': true },
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
-      expect.objectContaining({
-        name: 'submit_for_review',
-        _meta: { 'anthropic/requiresUserInteraction': true },
-      }),
-      expect.objectContaining({
-        name: 'cancel_review',
-        _meta: { 'anthropic/requiresUserInteraction': true },
-      }),
+      expect.objectContaining({ name: 'submit_for_review' }),
+      expect.objectContaining({ name: 'cancel_review' }),
       expect.objectContaining({
         name: 'release_version',
         _meta: { 'anthropic/requiresUserInteraction': true },
@@ -171,6 +165,8 @@ describe('MCP サーバー', () => {
       'set_review_detail',
       'copy_review_contact',
       'set_app_info',
+      'submit_for_review',
+      'cancel_review',
     ];
     expect(
       (listed.result?.tools as { name: string; _meta?: unknown }[])

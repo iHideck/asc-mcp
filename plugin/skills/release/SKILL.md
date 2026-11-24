@@ -6,7 +6,9 @@ description: Takes an App Store release (preparing the next version, setting up 
 
 Use the asc-mcp tools to take the next version from preparation to release. If you do not know the bundle ID of the app, look it up with `list_apps`.
 
-Each time you call a tool with external effects (`submit_for_review`, `cancel_review`, `release_version`, and `set_phased_release`), Claude Code asks the user to confirm. Before you call one, describe in text what it will do, and call it only after the user agrees.
+Each time you call a tool that you cannot undo (`release_version`, `set_phased_release`, `set_price`, and `set_availability`), Claude Code asks the user to confirm. Before you call one, describe in text what it will do, and call it only after the user agrees.
+
+`submit_for_review` and `cancel_review` do not ask for confirmation, because you can withdraw a submission. Call them without waiting when the user has asked to submit or to withdraw, so that the work continues while the user is away.
 
 ## 1. Check the current state
 
@@ -49,8 +51,8 @@ The API does not support the following. Ask the user to open the app in [App Sto
 
 ## 3. Submit for App Review
 
-1. Show the user the version number, the build number, the release type, whether the phased release is on, the text you changed (the full What's New text), and the screenshots you replaced. After submission, neither the text nor the screenshots can change until the submission is withdrawn.
-2. When the user agrees, call `submit_for_review`. If the error lists age rating questions that are not answered, ask the user for the answers, set them with `set_app_info` (`ageRating`), and call `submit_for_review` again.
+1. Call `submit_for_review` if the user has asked to submit (for example, "Ship the next version" or "Submit it for review"). Otherwise, ask the user first. If the error lists age rating questions that are not answered, ask the user for the answers, set them with `set_app_info` (`ageRating`), and call `submit_for_review` again.
+2. Report the version number, the build number, the release type, whether the phased release is on, the text you changed (the full What's New text), and the screenshots you replaced. After submission, neither the text nor the screenshots can change until the submission is withdrawn with `cancel_review`.
 3. After submission, check the state with `get_release_status`. The result of App Review takes from a few hours to a few days.
 
 ## 4. Release
