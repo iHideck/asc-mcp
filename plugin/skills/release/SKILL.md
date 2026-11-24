@@ -6,7 +6,7 @@ description: Takes an App Store release (preparing the next version, setting up 
 
 Use the asc-mcp tools to take the next version from preparation to release. If you do not know the bundle ID of the app, look it up with `list_apps`.
 
-Each time you call a tool that you cannot undo (`release_version`, `set_phased_release`, `set_price`, and `set_availability`), Claude Code asks the user to confirm. Before you call one, describe in text what it will do, and call it only after the user agrees.
+Each time you call a tool that you cannot undo (`release_version`, `set_phased_release`, `set_price`, `set_availability`, `set_subscription_price`, and `set_introductory_offer`), Claude Code asks the user to confirm. Before you call one, describe in text what it will do, and call it only after the user agrees.
 
 `submit_for_review` and `cancel_review` do not ask for confirmation, because you can withdraw a submission. Call them without waiting when the user has asked to submit or to withdraw, so that the work continues while the user is away.
 
@@ -51,6 +51,20 @@ The API does not support the following. Enter them on the website with the steps
 
 - [App Privacy](website.md#app-privacy)
 - [Availability on Apple silicon Macs and on Apple Vision Pro](website.md#availability-on-mac-and-apple-vision-pro). For an iPhone-only release, clear both.
+
+## Set up subscriptions
+
+When the user asks to sell an auto-renewable subscription, set it up with these tools. You can repeat each call.
+
+1. Read the current subscriptions with `get_subscriptions`.
+2. Create or update the group and the subscription with `ensure_subscription`. Pass the group's reference name and localized names, the product ID, the duration, the reference name, Family Sharing, the localized display names (2 to 30 characters) and descriptions (up to 45 characters), the review notes, and the absolute path of a review screenshot that shows the subscription in the app.
+3. Set the territories and the price with `set_subscription_price`. Pass the price in the base territory (for example, `480` in `JPN`). Apple sets a comparable price in every other territory. A price that took effect cannot be undone.
+4. To offer a free trial, call `set_introductory_offer` with its length.
+5. Tell the user the `warnings` of each tool.
+
+Before steps 3 and 4, show the user the values you will set.
+
+The first subscription of an app must go to App Review in the same submission as a new app version, together with its group. `submit_for_review` does not add subscriptions to the submission, and stops when the submission has items other than the version. For the first subscription, ask the user to add the subscription and its group to the submission of the version with **Add for Review** on the subscription page in App Store Connect, then submit the submission on the website.
 
 ## 3. Submit for App Review
 

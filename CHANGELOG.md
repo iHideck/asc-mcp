@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file. The format is b
 - `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.
 - `set_app_info` warns about age rating questions that are not answered, even when the App Store age rating is already set.
 - When App Store Connect refuses `submit_for_review` and some age rating questions are not answered, the error lists them.
+- Tools for auto-renewable subscriptions: `get_subscriptions`, `ensure_subscription` (group, product, localized text, review notes, and review screenshot), `set_subscription_price` (territories and the price in every territory from a base price), and `set_introductory_offer` (free trial). Localized text is written to the versions of the group and the subscription, which App Store Connect API 4.4.1 added. Claude Code asks for confirmation each time `set_subscription_price` or `set_introductory_offer` is called.
 - `ensure_version` sets the copyright (`copyright`). If you omit it and the version has none, it copies the copyright of the previous version. `get_release_status` returns the copyright of each version, and `submit_for_review` stops before submission when the copyright is empty.
 
 ## [1.0.0] - 2026-11-17

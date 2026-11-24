@@ -20,6 +20,10 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns, and warns about age rating questions that are not answered. |
 | `set_price` | Sets the app price. The only supported price is free. Each call requires your confirmation. |
 | `set_availability` | Sets the territories where the app is available. Pass a list of territories or an app to match. Each call requires your confirmation. |
+| `get_subscriptions` | Returns the auto-renewable subscription groups and subscriptions of an app, with their localized text, review screenshot, territories, prices, and free trials. |
+| `ensure_subscription` | Creates or updates a subscription group and a subscription: product ID, duration, reference name, Family Sharing, localized display names and descriptions, review notes, and review screenshot. Changes only the values that differ. |
+| `set_subscription_price` | Sets the territories of a subscription and its price in every territory, from the price in a base territory. Each call requires your confirmation. |
+| `set_introductory_offer` | Sets a free trial for new subscribers in each territory. Each call requires your confirmation. |
 | `submit_for_review` | Submits a version for App Review. Checks the copyright and the selected build first. If the submission is refused, lists the age rating questions that are not answered. You can withdraw it with `cancel_review`. |
 | `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. |
 | `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |

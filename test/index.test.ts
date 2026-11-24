@@ -145,6 +145,32 @@ describe('MCP サーバー', () => {
         _meta: { 'anthropic/requiresUserInteraction': true },
         inputSchema: expect.objectContaining({ required: ['bundleId'] }),
       }),
+      expect.objectContaining({
+        name: 'get_subscriptions',
+        annotations: readOnly,
+        inputSchema: expect.objectContaining({ required: ['bundleId'] }),
+      }),
+      expect.objectContaining({
+        name: 'ensure_subscription',
+        annotations: expect.objectContaining({ readOnlyHint: false, idempotentHint: true }),
+        inputSchema: expect.objectContaining({
+          required: ['bundleId', 'groupReferenceName', 'productId'],
+        }),
+      }),
+      expect.objectContaining({
+        name: 'set_subscription_price',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+        inputSchema: expect.objectContaining({
+          required: ['bundleId', 'productId', 'baseTerritory', 'price'],
+        }),
+      }),
+      expect.objectContaining({
+        name: 'set_introductory_offer',
+        _meta: { 'anthropic/requiresUserInteraction': true },
+        inputSchema: expect.objectContaining({
+          required: ['bundleId', 'productId', 'duration'],
+        }),
+      }),
       expect.objectContaining({ name: 'submit_for_review' }),
       expect.objectContaining({ name: 'cancel_review' }),
       expect.objectContaining({

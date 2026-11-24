@@ -225,8 +225,7 @@ export function createClient(
     schema: z.ZodType<D>,
     included?: object[],
   ): Promise<D> {
-    // 配信する国（appAvailabilities）は、v2 の API にしか無い
-    const path = `/${type === 'appAvailabilities' ? 'v2' : 'v1'}/${type}`;
+    const path = pathOf(type);
     const body = {
       data: { type, ...resourceBody(attributes, relationships) },
       ...(included === undefined ? {} : { included }),
@@ -258,7 +257,7 @@ export function createClient(
     createResource: (type, attributes, relationships, schema) =>
       post(type, attributes, relationships, schema),
     async update(type, id, attributes, relationships = {}) {
-      await call('PATCH', new URL(`/v1/${type}/${id}`, ORIGIN), {
+      await call('PATCH', new URL(pathOf(type, id), ORIGIN), {
         data: { type, id, ...resourceBody(attributes, relationships) },
       });
     },
@@ -268,7 +267,7 @@ export function createClient(
       });
     },
     async remove(type, id) {
-      await call('DELETE', new URL(`/v1/${type}/${id}`, ORIGIN));
+      await call('DELETE', new URL(pathOf(type, id), ORIGIN));
     },
     // 送り先は Apple が応答で渡す、API の外の URL。API のトークンは送らない
     async upload({ method, url, offset, length, requestHeaders }, file) {
@@ -298,6 +297,17 @@ export function createClient(
       }
     },
   };
+}
+
+// 配信する国は v2 にしか無い。サブスクの言語ごとの文は、版につく v2 を使う（v1 は古い扱い）
+const V2_TYPES: readonly string[] = [
+  'appAvailabilities',
+  'subscriptionGroupLocalizations',
+  'subscriptionLocalizations',
+];
+
+function pathOf(type: string, id?: string): string {
+  return `/${V2_TYPES.includes(type) ? 'v2' : 'v1'}/${type}${id === undefined ? '' : `/${id}`}`;
 }
 
 // 仕様に attributes や relationships が無い本文（審査への提出の中身・App 情報の更新など）があるので、空なら送らない
