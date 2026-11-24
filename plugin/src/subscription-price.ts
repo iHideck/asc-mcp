@@ -67,7 +67,7 @@ export async function setSubscriptionPrice(
     request.productId,
   );
   const allTerritories = await listTerritoryIds(client);
-  const wanted = request.territories ?? allTerritories;
+  const wanted = [...new Set(request.territories ?? allTerritories)];
   const unknown = [request.baseTerritory, ...wanted].filter((id) => !allTerritories.includes(id));
   if (unknown.length > 0) {
     throw new Error(
@@ -294,7 +294,7 @@ export async function setIntroductoryOffer(
       `The subscription ${request.productId} is not available in any territory. Set the price and territories with set_subscription_price first. Nothing was changed.`,
     );
   }
-  const wanted = request.territories ?? availability.territories;
+  const wanted = [...new Set(request.territories ?? availability.territories)];
   const outside = wanted.filter((id) => !availability.territories.includes(id));
   if (outside.length > 0) {
     throw new Error(

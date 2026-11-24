@@ -7,6 +7,7 @@ import type { AscClient, Attributes } from './client.ts';
 import { trackProgress, type Progress } from './progress.ts';
 import { DISPLAY_TYPES, imageSize, POLL_ROUNDS } from './screenshots.ts';
 import {
+  checkLocalizationsWritable,
   findSubscription,
   GROUP_METADATA,
   listGroups,
@@ -110,6 +111,27 @@ export async function ensureSubscription(
       `No subscription has the product ID ${request.productId}. To create it, also pass referenceName and subscriptionPeriod. Nothing was changed.`,
     );
   }
+  const groupLocalizations = request.groupLocalizations?.map(({ locale, name, customAppName }) => ({
+    locale,
+    name,
+    ...(customAppName === undefined ? {} : { customAppName }),
+  }));
+  const localizations = request.localizations?.map(({ locale, name, description }) => ({
+    locale,
+    name,
+    ...(description === undefined ? {} : { description }),
+  }));
+  if (requestedGroup !== undefined && groupLocalizations !== undefined) {
+    await checkLocalizationsWritable(client, GROUP_METADATA, requestedGroup.id, groupLocalizations);
+  }
+  if (found !== undefined && localizations !== undefined) {
+    await checkLocalizationsWritable(
+      client,
+      SUBSCRIPTION_METADATA,
+      found.subscription.id,
+      localizations,
+    );
+  }
   const before =
     found === undefined ? null : await readState(client, found.group, found.subscription);
   const progress = trackProgress();
@@ -130,18 +152,8 @@ export async function ensureSubscription(
       referenceName: request.groupReferenceName,
     } satisfies GroupSummary);
 
-  if (request.groupLocalizations !== undefined) {
-    await syncLocalizations(
-      client,
-      progress,
-      GROUP_METADATA,
-      group.id,
-      request.groupLocalizations.map(({ locale, name, customAppName }) => ({
-        locale,
-        name,
-        ...(customAppName === undefined ? {} : { customAppName }),
-      })),
-    );
+  if (groupLocalizations !== undefined) {
+    await syncLocalizations(client, progress, GROUP_METADATA, group.id, groupLocalizations);
   }
 
   const subscriptionId =
@@ -172,18 +184,8 @@ export async function ensureSubscription(
     }
   }
 
-  if (request.localizations !== undefined) {
-    await syncLocalizations(
-      client,
-      progress,
-      SUBSCRIPTION_METADATA,
-      subscriptionId,
-      request.localizations.map(({ locale, name, description }) => ({
-        locale,
-        name,
-        ...(description === undefined ? {} : { description }),
-      })),
-    );
+  if (localizations !== undefined) {
+    await syncLocalizations(client, progress, SUBSCRIPTION_METADATA, subscriptionId, localizations);
   }
 
   const warnings: string[] = [];
@@ -279,6 +281,9 @@ function missingItems(state: SubscriptionState): string[] {
     state.reviewScreenshot === null
       ? 'The subscription has no review screenshot. App Review needs one. Pass reviewScreenshot.'
       : undefined,
+    state.reviewScreenshot?.state === 'FAILED'
+      ? 'Apple did not accept the review screenshot. Pass another reviewScreenshot.'
+      : undefined,
   ].filter((warning) => warning !== undefined);
 }
 
@@ -322,8 +327,13 @@ async function replaceReviewScreenshot(
   file: ScreenshotFile,
   pause: Wait,
 ): Promise<boolean> {
-  const current = await readReviewScreenshot(client, subscriptionId);
-  if (current?.attributes.sourceFileChecksum === file.checksum) {
+  // 前に上げた写真が処理中なら、終わるのを待ってから、同じ写真かを比べる
+  const settled = await settle(client, progress, subscriptionId, pause, false);
+  const current = settled.screenshot;
+  if (settled.pending) {
+    return true;
+  }
+  if (current?.attributes.sourceFileChecksum === file.checksum && stateOf(current) !== 'FAILED') {
     return false;
   }
   if (current !== null) {
@@ -357,21 +367,44 @@ async function replaceReviewScreenshot(
       });
     },
   );
+  const uploaded = await settle(client, progress, subscriptionId, pause, true);
+  if (uploaded.screenshot !== null && stateOf(uploaded.screenshot) === 'FAILED') {
+    throw new Error(
+      `Apple did not accept the review screenshot ${file.fileName}: ${describeErrors(uploaded.screenshot)}. Fix it, then make the same call again.`,
+    );
+  }
+  return uploaded.pending;
+}
+
+function stateOf(screenshot: ReviewScreenshotResource): string | undefined {
+  return screenshot.attributes.assetDeliveryState?.state;
+}
+
+// Apple は、処理が終わって（COMPLETE）から少したつまで、sourceFileChecksum を返さない
+// 上げる前の写真（AWAITING_UPLOAD）は、上げ終えた直後なら Apple が受け取る途中。前から残っているなら、上げ損ねたもの
+function isProcessing(screenshot: ReviewScreenshotResource, justUploaded: boolean): boolean {
+  const state = stateOf(screenshot);
+  return (
+    (justUploaded && state === 'AWAITING_UPLOAD') ||
+    state === 'UPLOAD_COMPLETE' ||
+    (state === 'COMPLETE' && (screenshot.attributes.sourceFileChecksum ?? null) === null)
+  );
+}
+
+async function settle(
+  client: AscClient,
+  progress: Progress,
+  subscriptionId: string,
+  pause: Wait,
+  justUploaded: boolean,
+): Promise<{ screenshot: ReviewScreenshotResource | null; pending: boolean }> {
   for (let round = 1; ; round += 1) {
     const screenshot = await progress.read('reading the review screenshot', () =>
       readReviewScreenshot(client, subscriptionId),
     );
-    const state = screenshot?.attributes.assetDeliveryState?.state;
-    if (state === 'FAILED') {
-      throw new Error(
-        `Apple did not accept the review screenshot ${file.fileName}: ${describeErrors(screenshot)}. Fix it, then make the same call again.`,
-      );
-    }
-    if (state === 'COMPLETE') {
-      return false;
-    }
-    if (round === POLL_ROUNDS) {
-      return true;
+    const pending = screenshot !== null && isProcessing(screenshot, justUploaded);
+    if (!pending || round === POLL_ROUNDS) {
+      return { screenshot, pending };
     }
     await pause(POLL_INTERVAL_MS);
   }

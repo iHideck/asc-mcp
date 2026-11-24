@@ -140,6 +140,7 @@ export function offer(
     offerMode?: string;
     startDate?: string | null;
     endDate?: string | null;
+    targetSubscriptionPlanType?: string | null;
   } = {},
 ) {
   return resource(
@@ -151,6 +152,7 @@ export function offer(
       duration: fields.duration ?? 'ONE_WEEK',
       offerMode: fields.offerMode ?? 'FREE_TRIAL',
       numberOfPeriods: 1,
+      targetSubscriptionPlanType: fields.targetSubscriptionPlanType ?? null,
     },
     { territory: `territories:${territoryId}` },
   );

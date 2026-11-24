@@ -226,6 +226,7 @@ describe('ensureSubscription', () => {
         [GROUP_VERSIONS]: [
           page([groupVersion('gv1', 1, 'APPROVED')]),
           page([groupVersion('gv1', 1, 'APPROVED')]),
+          page([groupVersion('gv1', 1, 'APPROVED')]),
           page([
             groupVersion('gv2', 2, 'PREPARE_FOR_SUBMISSION'),
             groupVersion('gv1', 1, 'APPROVED'),
@@ -314,8 +315,11 @@ describe('ensureSubscription', () => {
     );
 
     await expect(
-      ensure(fetchFn, { localizations: [{ locale: 'ja', name: '別の名前' }] }),
-    ).rejects.toThrow(/WAITING_FOR_REVIEW[\s\S]*after App Review finishes/);
+      ensure(fetchFn, {
+        reviewNote: '別のメモ',
+        localizations: [{ locale: 'ja', name: '別の名前' }],
+      }),
+    ).rejects.toThrow(/WAITING_FOR_REVIEW[\s\S]*Nothing was changed/);
     expect(sentWrites(fetchFn)).toEqual([]);
   });
 
@@ -338,6 +342,54 @@ describe('ensureSubscription', () => {
     );
 
     await ensure(fetchFn, { reviewScreenshot: pathOf('other') });
+
+    expect(routesOf(fetchFn)).toEqual([
+      'DELETE /v1/subscriptionAppStoreReviewScreenshots/rs1',
+      'POST /v1/subscriptionAppStoreReviewScreenshots',
+      'PUT /rs2/part1',
+      'PATCH /v1/subscriptionAppStoreReviewScreenshots/rs2',
+    ]);
+  });
+
+  it('前に上げた同じ写真が処理中なら、消さずに終わるのを待つ', async () => {
+    const fetchFn = fakeFetch(
+      existing({
+        [SCREENSHOT]: [
+          jsonResponse(200, { data: reviewScreenshot('rs1', null, 'UPLOAD_COMPLETE') }),
+          jsonResponse(200, { data: reviewScreenshot('rs1', null, 'COMPLETE') }),
+          ...many(() =>
+            jsonResponse(200, { data: reviewScreenshot('rs1', md5('review'), 'COMPLETE') }),
+          ),
+        ],
+      }),
+    );
+
+    const result = await ensure(fetchFn, { reviewScreenshot: pathOf('review') });
+
+    expect(sentWrites(fetchFn)).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('同じ写真でも、Apple が受け付けなかったものは上げ直す', async () => {
+    const fetchFn = fakeFetch(
+      existing({
+        [SCREENSHOT]: [
+          jsonResponse(200, { data: reviewScreenshot('rs1', md5('review'), 'FAILED') }),
+          jsonResponse(200, { data: reviewScreenshot('rs1', md5('review'), 'FAILED') }),
+          ...many(() =>
+            jsonResponse(200, { data: reviewScreenshot('rs2', md5('review'), 'COMPLETE') }),
+          ),
+        ],
+        'DELETE /v1/subscriptionAppStoreReviewScreenshots/rs1': noContent(),
+        'POST /v1/subscriptionAppStoreReviewScreenshots': reserved('rs2', pictures.review.length),
+        [`PUT ${UPLOAD}/rs2/part1`]: new Response(null, { status: 200 }),
+        'PATCH /v1/subscriptionAppStoreReviewScreenshots/rs2': jsonResponse(200, {
+          data: reviewScreenshot('rs2', md5('review'), 'UPLOAD_COMPLETE'),
+        }),
+      }),
+    );
+
+    await ensure(fetchFn, { reviewScreenshot: pathOf('review') });
 
     expect(routesOf(fetchFn)).toEqual([
       'DELETE /v1/subscriptionAppStoreReviewScreenshots/rs1',

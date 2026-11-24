@@ -127,6 +127,7 @@ const IntroductoryOffer = z.object({
     duration: z.string().nullish(),
     offerMode: z.string().nullish(),
     numberOfPeriods: z.number().nullish(),
+    targetSubscriptionPlanType: z.string().nullish(),
   }),
   relationships: z.object({ territory: toOne }),
 });
@@ -258,6 +259,29 @@ export async function readLocalizations(
   return { versionState: version.state, localizations: sortByLocale(localizations) };
 }
 
+// 書き始める前に呼び、審査中で変えられない文があれば、何も送らずに止める
+export async function checkLocalizationsWritable(
+  client: AscClient,
+  kind: MetadataKind,
+  parentId: string,
+  wanted: LocalizedText[],
+): Promise<void> {
+  const version = await latestVersion(client, kind, parentId);
+  if (version === undefined || !IN_REVIEW_STATES.includes(version.state)) {
+    return;
+  }
+  const current = await kind.read(client, kind.localizationsPath(version.id));
+  if (planChanges(current, wanted).length > 0) {
+    throw inReviewError(kind, version);
+  }
+}
+
+function inReviewError(kind: MetadataKind, version: DraftVersion): Error {
+  return new Error(
+    `Cannot change the localized text of the ${kind.label} because its version is ${version.state}. Change it after App Review finishes. Nothing was changed.`,
+  );
+}
+
 // 渡した言語だけを、作るか変える。渡さなかった言語は消さない
 export async function syncLocalizations(
   client: AscClient,
@@ -277,9 +301,7 @@ export async function syncLocalizations(
     return { before, changed: false };
   }
   if (version !== undefined && IN_REVIEW_STATES.includes(version.state)) {
-    throw new Error(
-      `Cannot change the localized text of the ${kind.label} because its version is ${version.state}. Change it after App Review finishes.`,
-    );
+    throw inReviewError(kind, version);
   }
   if (version === undefined || !EDITABLE_STATES.includes(version.state)) {
     // 新しい版は、いまの言語ごとの文を写して作られる
@@ -524,7 +546,7 @@ export type OfferEntry = {
   endDate: string | null;
 };
 
-// 終わった導入オファーは読まない
+// 終わった導入オファーと、毎月払い（MONTHLY）向けのオファーは読まない
 export async function readIntroductoryOffers(
   client: AscClient,
   subscriptionId: string,
@@ -538,7 +560,11 @@ export async function readIntroductoryOffers(
   return data.flatMap(({ id, attributes, relationships }) => {
     const territory = relationships.territory?.data?.id;
     const endDate = attributes.endDate ?? null;
-    if (territory === undefined || (endDate !== null && endDate < today)) {
+    if (
+      territory === undefined ||
+      (endDate !== null && endDate < today) ||
+      (attributes.targetSubscriptionPlanType ?? UPFRONT) !== UPFRONT
+    ) {
       return [];
     }
     return [

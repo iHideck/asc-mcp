@@ -190,6 +190,32 @@ describe('setSubscriptionPrice', () => {
     });
   });
 
+  it('同じ国を重ねて渡しても、1つとして扱う', async () => {
+    const fetchFn = fakeFetch({
+      ...priceRoutes(),
+      [PLANS]: [page([planAvailability('pa1')]), page([planAvailability('pa1')])],
+      [PLAN_TERRITORIES]: [
+        page(['GBR', 'JPN', 'USA'].map(territory)),
+        page(['JPN', 'USA'].map(territory)),
+      ],
+      [PRICES]: page([]),
+      'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories':
+        noContent(),
+      'POST /v1/subscriptionPrices': [
+        created('subscriptionPrices', 'p1'),
+        created('subscriptionPrices', 'p2'),
+      ],
+    });
+
+    await setPrice(fetchFn, { territories: ['JPN', 'JPN', 'USA'] });
+
+    expect(routesOf(fetchFn)).toEqual([
+      'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories',
+      'POST /v1/subscriptionPrices',
+      'POST /v1/subscriptionPrices',
+    ]);
+  });
+
   it('基準の国に、その価格が無ければ、近い価格を挙げて何も送らない', async () => {
     const fetchFn = fakeFetch(priceRoutes());
 
@@ -270,6 +296,7 @@ describe('setIntroductoryOffer', () => {
         offer('jpn', 'JPN', { startDate: '2026-10-01' }),
         offer('usa', 'USA', { duration: 'ONE_MONTH' }),
         offer('ended', 'USA', { endDate: '2026-11-01' }),
+        offer('monthly', 'JPN', { duration: 'ONE_MONTH', targetSubscriptionPlanType: 'MONTHLY' }),
       ]),
       'DELETE /v1/subscriptionIntroductoryOffers/usa': noContent(),
       'POST /v1/subscriptionIntroductoryOffers': created('subscriptionIntroductoryOffers', 'o1'),
