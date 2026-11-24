@@ -8,7 +8,9 @@ import { listApps } from './apps.ts';
 import { setAvailability } from './availability.ts';
 import { createTokenSource, loadCredentials } from './auth.ts';
 import { createClient, isReadOnly, type AscClient } from './client.ts';
+import { ensureSubscription } from './ensure-subscription.ts';
 import { ensureVersion, RELEASE_TYPES } from './ensure-version.ts';
+import { getSubscriptions } from './get-subscriptions.ts';
 import { getLocalizations } from './localizations.ts';
 import { setFreePrice } from './price.ts';
 import { getReleaseStatus } from './release-status.ts';
@@ -23,6 +25,12 @@ import {
 } from './screenshots.ts';
 import { selectBuild } from './select-build.ts';
 import { localizationInput, setLocalizations } from './set-localizations.ts';
+import {
+  OFFER_DURATIONS,
+  setIntroductoryOffer,
+  setSubscriptionPrice,
+} from './subscription-price.ts';
+import { SUBSCRIPTION_PERIODS } from './subscriptions.ts';
 import { PLATFORMS } from './versions.ts';
 
 let client: AscClient | undefined;
@@ -424,6 +432,203 @@ server.registerTool(
     _meta: NEEDS_APPROVAL,
   },
   async (request) => json(await setAvailability(await getClient(), request)),
+);
+
+const productId = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9._-]{1,100}$/,
+    'A product ID has up to 100 letters, numbers, hyphens, periods, and underscores',
+  )
+  .describe('Product ID of the subscription (for example, com.example.myapp.monthly)');
+
+server.registerTool(
+  'get_subscriptions',
+  {
+    title: 'Get subscriptions',
+    description:
+      'Returns the auto-renewable subscription groups of an app and the subscriptions in each group. Each subscription includes its product ID, reference name, duration, Family Sharing, state, review notes, localized display names and descriptions, review screenshot, territories, current price in each territory, scheduled prices, and introductory offers. Localized text is read from the newest version of the group or subscription.',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      productId: productId
+        .optional()
+        .describe('Product ID to read. If omitted, reads all subscriptions'),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (request) => json(await getSubscriptions(await getClient(), request)),
+);
+
+server.registerTool(
+  'ensure_subscription',
+  {
+    title: 'Prepare subscription',
+    description:
+      'Creates or updates an auto-renewable subscription and its group. Creates the group if no group has the reference name, and creates the subscription if no subscription has the product ID. Sets only the values you pass, and changes only the values that differ. Localized text is written to the version of the group or subscription that is being prepared; if the newest version was already approved, creates a new version first. Locales you do not pass are not removed. If you pass a review screenshot that differs from the current one, replaces it. Does not set the price or the territories (use set_subscription_price). Returns the subscription before and after the change, and warnings about missing items.',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      groupReferenceName: z
+        .string()
+        .min(1)
+        .describe(
+          'Reference name of the subscription group. Only App Store Connect shows it, not customers',
+        ),
+      groupLocalizations: z
+        .array(
+          z.object({
+            locale: z.string().min(1).describe('Locale (for example, ja or en-US)'),
+            name: z.string().min(1).describe('Display name of the group on the App Store'),
+            customAppName: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                'Name shown above the group name in subscription settings on the device, instead of the app name',
+              ),
+          }),
+        )
+        .min(1)
+        .optional()
+        .describe('Localized text of the group. If omitted, does not change it'),
+      productId,
+      referenceName: z
+        .string()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe(
+          'Reference name of the subscription (up to 64 characters). Only App Store Connect shows it. Required to create the subscription',
+        ),
+      subscriptionPeriod: z
+        .enum(SUBSCRIPTION_PERIODS)
+        .optional()
+        .describe(
+          'Duration before the subscription renews. Required to create the subscription. Cannot change after the subscription is submitted for App Review',
+        ),
+      familySharable: z
+        .boolean()
+        .optional()
+        .describe('Whether Family Sharing is on. If omitted, does not change it'),
+      reviewNote: z
+        .string()
+        .min(1)
+        .max(4000)
+        .optional()
+        .describe(
+          'Notes for App Review (up to 4000 characters), such as how to reach the subscription in the app',
+        ),
+      localizations: z
+        .array(
+          z.object({
+            locale: z.string().min(1).describe('Locale (for example, ja or en-US)'),
+            name: z
+              .string()
+              .min(2)
+              .max(30)
+              .describe('Display name of the subscription (2 to 30 characters)'),
+            description: z
+              .string()
+              .min(1)
+              .max(45)
+              .optional()
+              .describe('Description of the subscription (up to 45 characters)'),
+          }),
+        )
+        .min(1)
+        .optional()
+        .describe('Localized text of the subscription. If omitted, does not change it'),
+      reviewScreenshot: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Absolute path of the screenshot for App Review (PNG or JPEG). Use a size that replace_screenshots accepts for any display type. App Review uses it, and the App Store does not show it',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async (request) => json(await ensureSubscription(await getClient(), request)),
+);
+
+server.registerTool(
+  'set_subscription_price',
+  {
+    title: 'Set subscription price',
+    description:
+      "Sets the territories and the price of an auto-renewable subscription. Finds the price point of the price in the base territory, then sets the comparable price that Apple calculates (equalization) in every territory. Makes the subscription available in the territories you pass (all territories if omitted) with up-front billing, and removes it from the others. Changes only the territories whose price differs. A price takes effect immediately. If a territory has a scheduled price, removes it first. A price that took effect cannot be undone. Each call requires the user's confirmation. Returns the territories before and after, and the territories whose price changed.",
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      productId,
+      baseTerritory: territoryId.describe('ID of the base territory (for example, JPN or USA)'),
+      price: z
+        .string()
+        .regex(/^\d+(\.\d+)?$/, 'Pass a price such as 480 or 2.99')
+        .describe(
+          'Customer price in the currency of the base territory (for example, 480 for JPN or 2.99 for USA). Must match a price point',
+        ),
+      territories: z
+        .array(territoryId)
+        .min(1)
+        .optional()
+        .describe(
+          'IDs of the territories where the subscription is available. If omitted, uses all territories',
+        ),
+      availableInNewTerritories: z
+        .boolean()
+        .optional()
+        .describe(
+          'Whether the subscription becomes available automatically in territories that the App Store adds later',
+        ),
+      preserveCurrentPrice: z
+        .boolean()
+        .optional()
+        .describe(
+          'For a price increase, whether existing subscribers keep their current price. If omitted, App Store Connect decides',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await setSubscriptionPrice(await getClient(), request)),
+);
+
+server.registerTool(
+  'set_introductory_offer',
+  {
+    title: 'Set free trial',
+    description:
+      "Sets a free trial (introductory offer) for new subscribers of an auto-renewable subscription in each territory. Starts immediately and has no end date. Changes only the territories whose offer differs: removes the current introductory offer there, then adds the free trial. The subscription must already be available in the territories (use set_subscription_price). Each customer can use one introductory offer per subscription group. Each call requires the user's confirmation. Returns the territories that changed.",
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      productId,
+      duration: z.enum(OFFER_DURATIONS).describe('Length of the free trial'),
+      territories: z
+        .array(territoryId)
+        .min(1)
+        .optional()
+        .describe(
+          'IDs of the territories. If omitted, uses all territories where the subscription is available',
+        ),
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    _meta: NEEDS_APPROVAL,
+  },
+  async (request) => json(await setIntroductoryOffer(await getClient(), request)),
 );
 
 server.registerTool(

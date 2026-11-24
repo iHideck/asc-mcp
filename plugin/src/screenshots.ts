@@ -338,7 +338,7 @@ async function checkFile(
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-function imageSize(bytes: Buffer): string | undefined {
+export function imageSize(bytes: Buffer): string | undefined {
   if (bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
     return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`;
   }
