@@ -31,11 +31,13 @@ The tools that write compare the current state with your input and change only t
 5. Set the review notes and whether the app requires sign-in with `set_review_detail`. If the App Review contact is missing, copy it from a version of another app with `copy_review_contact`.
 6. Tell the user the `warnings` and `skipped` of each tool.
 
-If anything remains that only the App Store Connect website can set (such as the demo account for App Review or App Privacy), ask the user to enter it on the website.
+If anything remains that only the App Store Connect website can set, such as App Privacy, enter it with the steps in [website.md](website.md). Ask the user to enter the demo account for App Review, because it includes a password.
 
 ## Setup for a new app
 
 For an app that has never been on the App Store, also set the following in addition to step 2. You can repeat each call.
+
+If `list_apps` does not return the app, create the app first with [Create an app](website.md#create-an-app).
 
 1. Set the categories, the content rights declaration, and the age rating answers with `set_app_info`. The returned `appStoreAgeRating` is the age rating that the App Store assigns.
 2. Set the price with `set_price`. The only supported price is free.
@@ -44,10 +46,10 @@ For an app that has never been on the App Store, also set the following in addit
 
 Each call to set the price or the territories asks the user to confirm. Before the call, show the user the values you will set.
 
-The API does not support the following. Ask the user to open the app in [App Store Connect](https://appstoreconnect.apple.com/apps) and set them on the website.
+The API does not support the following. Enter them on the website with the steps in [website.md](website.md).
 
-- **App Privacy**
-- Availability on Apple silicon Macs and on Apple Vision Pro. On the **Pricing and Availability** page, the user sets **Make this app available** under **iPhone and iPad Apps on Apple Silicon Macs** and under **iPhone and iPad Apps on Apple Vision Pro**. For an iPhone-only release, ask the user to clear both. Claude cannot read these settings, so ask the user to confirm that they cleared them.
+- [App Privacy](website.md#app-privacy)
+- [Availability on Apple silicon Macs and on Apple Vision Pro](website.md#availability-on-mac-and-apple-vision-pro). For an iPhone-only release, clear both.
 
 ## 3. Submit for App Review
 
