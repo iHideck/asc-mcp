@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AGE_RATING_FIELDS } from '../plugin/src/app-info.ts';
 import { createClient } from '../plugin/src/client.ts';
 import {
   cancelReview,
@@ -105,6 +106,37 @@ function items(...list: string[]) {
 
 function submission(state: string) {
   return jsonResponse(200, { data: resource('reviewSubmissions', 's1', { state }) });
+}
+
+// 質問にすべて答えた答えに、values を重ねる
+function ageRating(values: Record<string, boolean | null> = {}) {
+  return {
+    [`/v1/apps/${APP_ID}/appInfos`]: page([
+      resource('appInfos', 'i-live', { state: 'READY_FOR_DISTRIBUTION' }),
+      resource('appInfos', 'i-edit', { state: 'PREPARE_FOR_SUBMISSION' }),
+    ]),
+    '/v1/appInfos/i-edit/ageRatingDeclaration': jsonResponse(200, {
+      data: resource('ageRatingDeclarations', 'a1', {
+        ...Object.fromEntries(
+          Object.entries(AGE_RATING_FIELDS).map(([name, kind]) => [
+            name,
+            kind === 'boolean'
+              ? false
+              : Array.isArray(kind) && kind.includes('NONE')
+                ? 'NONE'
+                : null,
+          ]),
+        ),
+        ...values,
+      }),
+    }),
+  };
+}
+
+function rejected() {
+  return jsonResponse(409, {
+    errors: [{ status: '409', code: 'STATE_ERROR.ENTITY_STATE_INVALID' }],
+  });
 }
 
 function ok() {
@@ -240,6 +272,7 @@ describe('submitForReview', () => {
       '/v1/builds': builds(),
       'POST /v1/reviewSubmissions': created('reviewSubmissions', 's1'),
       'POST /v1/reviewSubmissionItems': created('reviewSubmissionItems', 'i1'),
+      ...ageRating(),
       'PATCH /v1/reviewSubmissions/s1': jsonResponse(409, {
         errors: [
           {
@@ -278,7 +311,46 @@ describe('submitForReview', () => {
       /^Created the App Review submission\. Added version 1\.0\.2 to the submission\. Stopped while submitting version 1\.0\.2 for App Review\. Fix the problem in the error, then /,
     );
     expect(message).toContain('ENTITY_ERROR.ATTRIBUTE.REQUIRED');
+    expect(message).not.toContain('age rating');
     expect(routesOf(retrying)).toEqual(['PATCH /v1/reviewSubmissions/s1']);
+  });
+
+  it('出すところで断られ、年齢制限の質問に未回答があれば、その質問を添える', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: versions('PREPARE_FOR_SUBMISSION'),
+      [SUBMISSIONS]: submissions(['s1', 'READY_FOR_REVIEW']),
+      [ITEMS]: items('READY_FOR_REVIEW:v102'),
+      '/v1/builds': builds(),
+      'PATCH /v1/reviewSubmissions/s1': rejected(),
+      ...ageRating({ sharedLocation: null, datingAndRelationships: null }),
+    });
+
+    const message = await submitForReview(client(fetchFn), request).catch((error: unknown) =>
+      error instanceof Error ? error.message : '',
+    );
+
+    expect(message).toMatch(/^The App Store Connect API returned 409\./);
+    expect(message).toContain('STATE_ERROR.ENTITY_STATE_INVALID');
+    expect(message).toMatch(
+      /These age rating questions are not answered: datingAndRelationships, sharedLocation\. Answer them with set_app_info/,
+    );
+  });
+
+  it('未回答の質問を読めなくても、Apple の知らせはそのまま返す', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: versions('PREPARE_FOR_SUBMISSION'),
+      [SUBMISSIONS]: submissions(['s1', 'READY_FOR_REVIEW']),
+      [ITEMS]: items('READY_FOR_REVIEW:v102'),
+      '/v1/builds': builds(),
+      'PATCH /v1/reviewSubmissions/s1': rejected(),
+      [`/v1/apps/${APP_ID}/appInfos`]: jsonResponse(500, { errors: [] }),
+    });
+
+    await expect(submitForReview(client(fetchFn), request)).rejects.toThrow(
+      /^The App Store Connect API returned 409\.[\s\S]*STATE_ERROR\.ENTITY_STATE_INVALID$/,
+    );
   });
 
   it('もう出してある版は、版の状態が遅れていても、何も送らない', async () => {

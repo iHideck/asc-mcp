@@ -17,10 +17,10 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `replace_screenshots` | Replaces the screenshots for one language and one display type of the editable version with the files you pass. Checks that the format and size of each image fit the display type before it uploads. |
 | `set_review_detail` | Sets the review notes of the editable version and whether the app requires sign-in. Reports a missing contact or demo account. |
 | `copy_review_contact` | Copies the App Review contact from a version of another app. Does not return the contact details. |
-| `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns. |
+| `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns, and warns about age rating questions that are not answered. |
 | `set_price` | Sets the app price. The only supported price is free. Each call requires your confirmation. |
 | `set_availability` | Sets the territories where the app is available. Pass a list of territories or an app to match. Each call requires your confirmation. |
-| `submit_for_review` | Submits a version for App Review. Checks the selected build first. Each call requires your confirmation. |
+| `submit_for_review` | Submits a version for App Review. Checks the selected build first. If the submission is refused, lists the age rating questions that are not answered. Each call requires your confirmation. |
 | `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. Each call requires your confirmation. |
 | `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |
 | `set_phased_release` | Pauses, resumes, or completes a phased release. You cannot undo a release to all users. Each call requires your confirmation. |

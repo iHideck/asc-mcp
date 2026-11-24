@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { unansweredAgeRatingQuestions } from './app-info.ts';
 import { findApp, type AppSummary } from './apps.ts';
 import { Build, PreReleaseVersion, unusableReason } from './builds.ts';
-import { findIncluded, sparseFields, toOne, type AscClient } from './client.ts';
+import { AscApiError, findIncluded, sparseFields, toOne, type AscClient } from './client.ts';
 import { trackProgress } from './progress.ts';
 import {
   isDistributed,
@@ -157,7 +158,10 @@ export async function submitForReview(
   await progress.write(
     `submitting version ${name} for App Review`,
     `Submitted version ${name} for App Review`,
-    () => client.update('reviewSubmissions', submissionId, { submitted: true }),
+    () =>
+      client
+        .update('reviewSubmissions', submissionId, { submitted: true })
+        .catch((error: unknown) => withAgeRatingHint(client, app.appleId, error)),
   );
   const after = await progress.read('reading the submitted version again', () =>
     readState(client, app.appleId, request.platform, version.id, submissionId),
@@ -217,6 +221,25 @@ export async function cancelReview(
     readState(client, app.appleId, request.platform, version.id, mine.id),
   );
   return result(app, request.platform, version, before, after);
+}
+
+// 年齢制限の質問が未回答だと審査に出せない。断られたら、未回答の質問を読んで添える
+async function withAgeRatingHint(
+  client: AscClient,
+  appleId: string,
+  error: unknown,
+): Promise<never> {
+  if (!(error instanceof AscApiError) || error.status >= 500) {
+    throw error;
+  }
+  const missing = await unansweredAgeRatingQuestions(client, appleId).catch(() => []);
+  if (missing.length === 0) {
+    throw error;
+  }
+  throw new AscApiError(
+    error.status,
+    `${error.message}\nThese age rating questions are not answered: ${missing.join(', ')}. Answer them with set_app_info (ageRating), then submit again.`,
+  );
 }
 
 function pickVersion(
