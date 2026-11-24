@@ -9,9 +9,9 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | Tool | What it does |
 | :- | :- |
 | `list_apps` | Returns the name, bundle ID, and Apple ID of each app. |
-| `get_release_status` | Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the `ITMS-` warnings from its upload. |
+| `get_release_status` | Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the `ITMS-` warnings from its upload. Each version includes its copyright. |
 | `get_localizations` | Returns the localized text of a version (description, keywords, promotional text, what's new, and URLs) and of App Information (name, subtitle, and privacy policy URL). |
-| `ensure_version` | Prepares the next version. Creates the version if no version has that number. Changes the number of the editable version if the number differs. Also sets the release type and the phased release to the values you pass. |
+| `ensure_version` | Prepares the next version. Creates the version if no version has that number. Changes the number of the editable version if the number differs. Also sets the release type, the phased release, and the copyright to the values you pass. If you omit the copyright and the version has none, copies it from the previous version. |
 | `select_build` | Selects the build to submit for the editable version. Does not select a build that is still processing, expired, or for internal testing only. |
 | `set_localizations` | Writes localized App Store text to the editable version and App Information. Checks the character limits and URL formats before it writes. |
 | `replace_screenshots` | Replaces the screenshots for one language and one display type of the editable version with the files you pass. Checks that the format and size of each image fit the display type before it uploads. |
@@ -20,7 +20,7 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `set_app_info` | Sets the categories, the content rights declaration, and the age rating answers in App Information. Returns the age rating that the App Store assigns, and warns about age rating questions that are not answered. |
 | `set_price` | Sets the app price. The only supported price is free. Each call requires your confirmation. |
 | `set_availability` | Sets the territories where the app is available. Pass a list of territories or an app to match. Each call requires your confirmation. |
-| `submit_for_review` | Submits a version for App Review. Checks the selected build first. If the submission is refused, lists the age rating questions that are not answered. You can withdraw it with `cancel_review`. |
+| `submit_for_review` | Submits a version for App Review. Checks the copyright and the selected build first. If the submission is refused, lists the age rating questions that are not answered. You can withdraw it with `cancel_review`. |
 | `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. |
 | `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |
 | `set_phased_release` | Pauses, resumes, or completes a phased release. You cannot undo a release to all users. Each call requires your confirmation. |

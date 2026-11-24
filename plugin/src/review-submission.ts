@@ -5,6 +5,7 @@ import { Build, PreReleaseVersion, unusableReason } from './builds.ts';
 import { AscApiError, findIncluded, sparseFields, toOne, type AscClient } from './client.ts';
 import { trackProgress } from './progress.ts';
 import {
+  hasCopyright,
   isDistributed,
   isEditable,
   listVersions,
@@ -109,6 +110,11 @@ export async function submitForReview(
           `Version ${name} is in an App Review submission, but the submission was not found. Check it in App Store Connect.`,
         )
       : notEditableError(version);
+  }
+  if (!hasCopyright(version.status)) {
+    throw new Error(
+      `Version ${name} has no copyright. Set it with ensure_version (copyright) before you submit.`,
+    );
   }
   await checkBuild(client, version);
   // 作りかけの提出があれば使う。やり直したときに、提出を二重に作らないため

@@ -67,7 +67,7 @@ server.registerTool(
   {
     title: 'Get release status',
     description:
-      'Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the ITMS- errors and warnings from its upload (uploadIssues; null if no record exists). Each version includes its state, its release type, its selected build, and its phased release.',
+      'Returns the five newest builds, the live version, and the next version. Each build includes its processing status, its TestFlight status, the groups that received it, and the ITMS- errors and warnings from its upload (uploadIssues; null if no record exists). Each version includes its state, its release type, its copyright, its selected build, and its phased release.',
     inputSchema: z.object(appArguments),
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -106,7 +106,7 @@ server.registerTool(
   {
     title: 'Prepare version',
     description:
-      'Prepares the next version. Creates the version if no version has that number. If the editable version (prepare for submission or rejected) has a different number, changes its number. Sets the release type and the phased release only when you pass them. Does not change a version that is in App Review, and does not reuse a number that was already released. Returns the version before and after the change, and any warnings.',
+      'Prepares the next version. Creates the version if no version has that number. If the editable version (prepare for submission or rejected) has a different number, changes its number. Sets the release type and the phased release only when you pass them. Sets the copyright when you pass it. If you omit it and the editable version has no copyright, copies the copyright of the newest other version that has one. Does not change a version that is in App Review, and does not reuse a number that was already released. Returns the version before and after the change, and any warnings.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -132,6 +132,14 @@ server.registerTool(
         .optional()
         .describe(
           'Whether to use a phased release, which releases the update gradually over 7 days to users with automatic updates turned on. If omitted, the setting does not change',
+        ),
+      copyright: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          'Copyright shown on the App Store, usually the year followed by the name of the owner (for example, 2026 Example Inc.). App Store Connect adds the © symbol, so do not include it. If omitted, keeps the current copyright, or copies it from the newest other version when the version has none',
         ),
     }),
     annotations: {
@@ -423,7 +431,7 @@ server.registerTool(
   {
     title: 'Submit for App Review',
     description:
-      'Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. You can withdraw the submission with cancel_review. Returns the state before and after the submission. If App Store Connect refuses the submission and some age rating questions are not answered, the error lists them.',
+      'Submits a version for App Review. First checks that the version has a copyright, that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. You can withdraw the submission with cancel_review. Returns the state before and after the submission. If App Store Connect refuses the submission and some age rating questions are not answered, the error lists them.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z

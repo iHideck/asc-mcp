@@ -2,6 +2,7 @@ import { findApp, type AppSummary } from './apps.ts';
 import type { AscClient, Attributes } from './client.ts';
 import { trackProgress } from './progress.ts';
 import {
+  hasCopyright,
   isDistributed,
   isEditable,
   isFirstRelease,
@@ -23,6 +24,7 @@ export type EnsureVersionRequest = {
   releaseType?: (typeof RELEASE_TYPES)[number] | undefined;
   earliestReleaseDate?: string | undefined;
   phasedRelease?: boolean | undefined;
+  copyright?: string | undefined;
 };
 
 type Release =
@@ -67,7 +69,12 @@ export async function ensureVersion(
     before,
     after,
     skipped,
-    warnings,
+    warnings: hasCopyright(after)
+      ? warnings
+      : [
+          ...warnings,
+          `Version ${after.versionString} has no copyright. Set it with copyright (for example, 2026 Example Inc.) before you submit for App Review.`,
+        ],
   });
   const match = versions.find(({ status }) => status.versionString === request.versionString);
   if (match !== undefined && isDistributed(match)) {
@@ -103,6 +110,7 @@ export async function ensureVersion(
             platform: request.platform,
             versionString: request.versionString,
             ...releaseChanges(null, release),
+            ...copyrightChange(versions, undefined, request.copyright),
           },
           { app: { type: 'apps', id: app.appleId } },
         ),
@@ -114,6 +122,7 @@ export async function ensureVersion(
     const changes: Attributes = {
       ...(renamed ? { versionString: request.versionString } : {}),
       ...releaseChanges(target.status, release),
+      ...copyrightChange(versions, target, request.copyright),
     };
     const togglesPhased =
       phasedRelease !== undefined && phasedRelease !== (target.phasedReleaseId !== null);
@@ -205,6 +214,22 @@ function sameInstant(a: string | null, b: string | null): boolean {
   return a === null || b === null ? a === b : Date.parse(a) === Date.parse(b);
 }
 
+// 指定が無ければ、空の版にだけ、いちばん新しいほかの版の著作権を写す。審査中の版などは、指定が無いのに変えようとして止めない
+function copyrightChange(
+  versions: Version[],
+  target: Version | undefined,
+  requested: string | undefined,
+): Attributes {
+  if (requested !== undefined) {
+    return requested === target?.status.copyright ? {} : { copyright: requested };
+  }
+  if (target !== undefined && (hasCopyright(target.status) || !isEditable(target))) {
+    return {};
+  }
+  const previous = versions.find((version) => version !== target && hasCopyright(version.status));
+  return previous === undefined ? {} : { copyright: previous.status.copyright };
+}
+
 function describeChanges(changes: Attributes): string {
   return [
     changes.versionString === undefined
@@ -216,6 +241,7 @@ function describeChanges(changes: Attributes): string {
     changes.releaseType === undefined && typeof changes.earliestReleaseDate === 'string'
       ? `the release date to ${changes.earliestReleaseDate}`
       : undefined,
+    typeof changes.copyright === 'string' ? `the copyright to "${changes.copyright}"` : undefined,
   ]
     .filter((part) => part !== undefined)
     .join(' and ');
@@ -245,6 +271,9 @@ function differences(
     release === undefined || sameInstant(status.earliestReleaseDate, release.earliestReleaseDate)
       ? undefined
       : `the release date is ${String(status.earliestReleaseDate)} (requested: ${String(release.earliestReleaseDate)})`,
+    request.copyright === undefined || status.copyright === request.copyright
+      ? undefined
+      : `the copyright is "${String(status.copyright)}" (requested: "${request.copyright}")`,
     phasedRelease === undefined || phasedRelease === (after.phasedReleaseId !== null)
       ? undefined
       : `phased release is ${after.phasedReleaseId === null ? 'off' : 'on'} (requested: ${phasedRelease ? 'on' : 'off'})`,

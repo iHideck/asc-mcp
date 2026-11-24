@@ -22,6 +22,7 @@ Each time you call a tool that you cannot undo (`release_version`, `set_phased_r
 The tools that write compare the current state with your input and change only the differences. You can repeat the same call.
 
 1. Prepare the version with `ensure_version`. Pass the release type (`MANUAL`, `AFTER_APPROVAL`, or `SCHEDULED`) and the phased release that the user decided.
+   - If you omit `copyright`, `ensure_version` copies the copyright of the previous version into a version that has none. For the first version, or to change the year or the owner, pass `copyright` (the year and the owner, such as `2026 Example Inc.`, without the © symbol). App Review requires it.
 2. Select the build with `select_build`.
 3. Read the current text with `get_localizations`, then write the text to change with `set_localizations`. Unless this is the first version of the app, every locale needs the What's New text (`whatsNew`).
    - If the app's repository has rules or a source of truth for the App Store text (for example, `docs/release.md`), follow them. After you write the text, check that it matches the source of truth.
