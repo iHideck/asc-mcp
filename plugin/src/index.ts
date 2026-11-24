@@ -46,7 +46,8 @@ const appArguments = {
   platform: z.enum(PLATFORMS).default('IOS'),
 };
 
-// 外に出る操作は、Claude Code が呼ぶたびに、利用者の確認を求める（どの権限のモードでも、許可の決まりでも省けない）
+// 取り消せない操作は、Claude Code が呼ぶたびに、利用者の確認を求める（どの権限のモードでも、許可の決まりでも省けない）。
+// 審査への提出と取り下げは取り消せるので付けない。付けると、利用者が画面の前にいない間、裏のセッションが止まる
 const NEEDS_APPROVAL = { 'anthropic/requiresUserInteraction': true };
 
 const server = new McpServer({ name: 'asc-mcp', version: packageJson.version });
@@ -422,7 +423,7 @@ server.registerTool(
   {
     title: 'Submit for App Review',
     description:
-      "Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the submission. If App Store Connect refuses the submission and some age rating questions are not answered, the error lists them.",
+      'Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. You can withdraw the submission with cancel_review. Returns the state before and after the submission. If App Store Connect refuses the submission and some age rating questions are not answered, the error lists them.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -439,7 +440,6 @@ server.registerTool(
       idempotentHint: true,
       openWorldHint: true,
     },
-    _meta: NEEDS_APPROVAL,
   },
   async (request) => json(await submitForReview(await getClient(), request)),
 );
@@ -449,7 +449,7 @@ server.registerTool(
   {
     title: 'Withdraw from App Review',
     description:
-      "Withdraws a version that is waiting for App Review or in App Review. The withdrawn version becomes editable. If the version is not submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the withdrawal.",
+      'Withdraws a version that is waiting for App Review or in App Review. The withdrawn version becomes editable. If the version is not submitted, returns without changes. Returns the state before and after the withdrawal.',
     inputSchema: z.object({
       ...appArguments,
       versionString: z
@@ -466,7 +466,6 @@ server.registerTool(
       idempotentHint: true,
       openWorldHint: true,
     },
-    _meta: NEEDS_APPROVAL,
   },
   async (request) => json(await cancelReview(await getClient(), request)),
 );

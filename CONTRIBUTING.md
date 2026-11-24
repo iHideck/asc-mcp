@@ -23,7 +23,7 @@ Do not put your Issuer ID, Key ID, private key, or App Review contact details in
 - Every request that the server sends must exist in Apple's OpenAPI specification. The tests check each request against the specification that Apple currently publishes.
 - Tests must not call the real App Store Connect API. Use the fake API in `test/fake-api.ts`.
 - Text that users see (tool descriptions, parameter descriptions, errors, progress messages, and the skill) is in English.
-- A tool that submits, releases, or changes what customers can buy must require user confirmation. Set `_meta["anthropic/requiresUserInteraction"]` on it.
+- A tool that does something you cannot undo, such as releasing or changing what customers can buy, must require user confirmation. Do not require it for a tool that you can undo, such as `submit_for_review` (undone by `cancel_review`), because it stops unattended sessions. Set `_meta["anthropic/requiresUserInteraction"]` on it.
 - Do not return or log secrets or App Review contact details, including in error messages.
 
 When you try your change against the real API, keep the default `ASC_READ_ONLY=1` unless you mean to write to App Store Connect.
