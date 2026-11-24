@@ -50,7 +50,7 @@ The API does not support the following. Ask the user to open the app in [App Sto
 ## 3. Submit for App Review
 
 1. Show the user the version number, the build number, the release type, whether the phased release is on, the text you changed (the full What's New text), and the screenshots you replaced. After submission, neither the text nor the screenshots can change until the submission is withdrawn.
-2. When the user agrees, call `submit_for_review`.
+2. When the user agrees, call `submit_for_review`. If the error lists age rating questions that are not answered, ask the user for the answers, set them with `set_app_info` (`ageRating`), and call `submit_for_review` again.
 3. After submission, check the state with `get_release_status`. The result of App Review takes from a few hours to a few days.
 
 ## 4. Release

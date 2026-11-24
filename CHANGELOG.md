@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.
+- `set_app_info` warns about age rating questions that are not answered, even when the App Store age rating is already set.
+- When App Store Connect refuses `submit_for_review` and some age rating questions are not answered, the error lists them.
+
 ## [1.0.0] - 2026-11-17
 
 The first release.

@@ -16,6 +16,7 @@ export const AGE_RATING_FIELDS: Record<string, 'boolean' | 'string' | readonly s
   advertising: 'boolean',
   alcoholTobaccoOrDrugUseOrReferences: FREQUENCIES,
   contests: FREQUENCIES,
+  datingAndRelationships: 'boolean',
   gambling: 'boolean',
   gamblingSimulated: FREQUENCIES,
   gunsOrOtherWeapons: FREQUENCIES,
@@ -29,6 +30,7 @@ export const AGE_RATING_FIELDS: Record<string, 'boolean' | 'string' | readonly s
   ageAssurance: 'boolean',
   sexualContentGraphicAndNudity: FREQUENCIES,
   sexualContentOrNudity: FREQUENCIES,
+  sharedLocation: 'boolean',
   socialMedia: 'boolean',
   socialMediaAgeRestricted: 'boolean',
   horrorOrFearThemes: FREQUENCIES,
@@ -52,6 +54,12 @@ export const AGE_RATING_FIELDS: Record<string, 'boolean' | 'string' | readonly s
 };
 
 const AGE_RATING_NAMES = Object.keys(AGE_RATING_FIELDS);
+
+// 答えると年齢が決まる質問。年齢帯・年齢の上書き・URL などの設定は、空のままでよいので除く
+const AGE_RATING_QUESTIONS = AGE_RATING_NAMES.filter((name) => {
+  const kind = AGE_RATING_FIELDS[name];
+  return kind === 'boolean' || kind === FREQUENCIES;
+});
 
 export const CATEGORY_SLOTS = [
   'primaryCategory',
@@ -241,11 +249,7 @@ async function readState(
   if (appInfo === null) {
     throw new Error('Could not read App Information.');
   }
-  const declaration = await client.getOne(
-    `/v1/appInfos/${appInfoId}/ageRatingDeclaration`,
-    sparseFields(AgeRatingDeclaration),
-    AgeRatingDeclaration,
-  );
+  const declaration = await readDeclaration(client, appInfoId);
   const { relationships, attributes } = appInfo;
   return {
     state: {
@@ -255,12 +259,41 @@ async function readState(
       ) as Record<CategorySlot, string | null>,
       contentRightsDeclaration: rights?.attributes.contentRightsDeclaration ?? null,
       appStoreAgeRating: attributes.appStoreAgeRating,
-      ageRating: Object.fromEntries(
-        AGE_RATING_NAMES.map((name) => [name, declaration?.attributes[name] ?? null]),
-      ),
+      ageRating: answersOf(declaration),
     },
     declarationId: declaration?.id ?? relationships.ageRatingDeclaration?.data?.id ?? null,
   };
+}
+
+export async function unansweredAgeRatingQuestions(
+  client: AscClient,
+  appleId: string,
+): Promise<string[]> {
+  const appInfo = (await listCurrentAppInfos(client, appleId)).find(({ state }) =>
+    EDITABLE_APP_INFO_STATES.includes(state),
+  );
+  if (appInfo === undefined) {
+    return [];
+  }
+  return unanswered(answersOf(await readDeclaration(client, appInfo.id)));
+}
+
+function readDeclaration(client: AscClient, appInfoId: string) {
+  return client.getOne(
+    `/v1/appInfos/${appInfoId}/ageRatingDeclaration`,
+    sparseFields(AgeRatingDeclaration),
+    AgeRatingDeclaration,
+  );
+}
+
+function answersOf(declaration: z.infer<typeof AgeRatingDeclaration> | null): AgeRatingValues {
+  return Object.fromEntries(
+    AGE_RATING_NAMES.map((name) => [name, declaration?.attributes[name] ?? null]),
+  );
+}
+
+function unanswered(ageRating: AgeRatingValues): string[] {
+  return AGE_RATING_QUESTIONS.filter((name) => ageRating[name] === null);
 }
 
 async function checkCategories(
@@ -331,11 +364,17 @@ function warningsFor(
       .filter(([name, value]) => after.ageRating[name] !== value)
       .map(([name]) => `the age rating answer ${name} is ${String(after.ageRating[name])}`),
   ].map((text) => `The value in App Store Connect differs from the request: ${text}`);
-  const unrated =
-    after.appStoreAgeRating === null
+  // 編集できない App 情報（公開中など）は、質問が増える前の答えのままのことがあり、ここでは答えられない
+  const missing = EDITABLE_APP_INFO_STATES.includes(after.appInfoState)
+    ? unanswered(after.ageRating)
+    : [];
+  const unrated = [
+    ...(after.appStoreAgeRating === null ? ['The App Store age rating is not set yet.'] : []),
+    ...(missing.length > 0
       ? [
-          `The App Store age rating is not set yet. Some age rating answers might be missing (unanswered: ${AGE_RATING_NAMES.filter((name) => after.ageRating[name] === null).join(', ')}).`,
+          `Some age rating questions are not answered (${missing.join(', ')}). App Review submission might fail until they are answered with set_app_info.`,
         ]
-      : [];
+      : []),
+  ];
   return [...differences, ...unrated];
 }

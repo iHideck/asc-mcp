@@ -18,13 +18,17 @@ const APP = `/v1/apps/${APP_ID}`;
 
 type Categories = Partial<Record<string, string>>;
 
-function appInfo(rating: string | null, categories: Categories = {}) {
+function appInfo(
+  rating: string | null,
+  categories: Categories = {},
+  state = 'PREPARE_FOR_SUBMISSION',
+) {
   const link = (id: string | undefined) => (id === undefined ? null : `appCategories:${id}`);
   return jsonResponse(200, {
     data: resource(
       'appInfos',
       'i-edit',
-      { state: 'PREPARE_FOR_SUBMISSION', appStoreAgeRating: rating },
+      { state, appStoreAgeRating: rating },
       {
         primaryCategory: link(categories.primaryCategory),
         primarySubcategoryOne: link(categories.primarySubcategoryOne),
@@ -45,6 +49,19 @@ function declaration(values: Record<string, string | boolean | null> = {}) {
       ...values,
     }),
   });
+}
+
+// 質問にすべて答えた答え。年齢帯や年齢の上書きなどの設定は、空のまま
+function answered(values: Record<string, string | boolean | null> = {}) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(AGE_RATING_FIELDS).map(([name, kind]) => [
+        name,
+        kind === 'boolean' ? false : Array.isArray(kind) && kind.includes('NONE') ? 'NONE' : null,
+      ]),
+    ),
+    ...values,
+  };
 }
 
 function rights(value: string | null) {
@@ -99,8 +116,8 @@ describe('setAppInfo', () => {
       [APP_INFOS]: appInfos(),
       [APP_INFO]: [appInfo(null), appInfo('FOUR_PLUS', games)],
       [DECLARATION]: [
-        declaration(),
-        declaration({ violenceCartoonOrFantasy: 'NONE', gambling: false }),
+        declaration(answered({ violenceCartoonOrFantasy: null, gambling: null })),
+        declaration(answered()),
       ],
       [APP]: [rights(null), rights('DOES_NOT_USE_THIRD_PARTY_CONTENT')],
       '/v1/appCategories': categories(),
@@ -139,7 +156,7 @@ describe('setAppInfo', () => {
       appStoreAgeRating: 'FOUR_PLUS',
       contentRightsDeclaration: 'DOES_NOT_USE_THIRD_PARTY_CONTENT',
       categories: games,
-      ageRating: { violenceCartoonOrFantasy: 'NONE', gambling: false, lootBox: null },
+      ageRating: { violenceCartoonOrFantasy: 'NONE', gambling: false, kidsAgeBand: null },
     });
     expect(result.warnings).toEqual([]);
   });
@@ -210,7 +227,7 @@ describe('setAppInfo', () => {
     ]);
   });
 
-  it('App Store の年齢がまだ決まっていなければ、答えていない項目を知らせる', async () => {
+  it('App Store の年齢がまだ決まっていなければ、そう知らせ、答えていない質問を挙げる', async () => {
     const fetchFn = fakeFetch({
       '/v1/apps': app(),
       [APP_INFOS]: appInfos(),
@@ -223,9 +240,61 @@ describe('setAppInfo', () => {
     const result = await set(fetchFn, { ageRating: { gambling: false } });
 
     expect(result.warnings).toEqual([
-      expect.stringMatching(/The App Store age rating is not set yet[\s\S]*advertising/),
+      'The App Store age rating is not set yet.',
+      expect.stringMatching(/^Some age rating questions are not answered \(advertising, /),
     ]);
-    expect(result.warnings[0]).not.toContain('gambling,');
+    expect(result.warnings[1]).not.toMatch(/\bgambling,|kidsAgeBand|ageRatingOverrideV2/);
+  });
+
+  it('年齢が決まっていても、編集できる App 情報であとから増えた質問に答えていなければ知らせ、答えられる', async () => {
+    const old = answered({ sharedLocation: null, datingAndRelationships: null });
+    const reading = fakeFetch({
+      '/v1/apps': app(),
+      [APP_INFOS]: appInfos(),
+      [APP_INFO]: appInfo('FOUR_PLUS'),
+      [DECLARATION]: declaration(old),
+      [APP]: rights(null),
+    });
+    const answering = fakeFetch({
+      '/v1/apps': app(),
+      [APP_INFOS]: appInfos(),
+      [APP_INFO]: [appInfo('FOUR_PLUS'), appInfo('FOUR_PLUS')],
+      [DECLARATION]: [
+        declaration(old),
+        declaration({ ...old, sharedLocation: false, datingAndRelationships: false }),
+      ],
+      [APP]: [rights(null), rights(null)],
+      'PATCH /v1/ageRatingDeclarations/a1': jsonResponse(200, { data: {} }),
+    });
+
+    const live = fakeFetch({
+      '/v1/apps': app(),
+      [APP_INFOS]: appInfos('READY_FOR_DISTRIBUTION'),
+      [APP_INFO]: appInfo('FOUR_PLUS', {}, 'READY_FOR_DISTRIBUTION'),
+      [DECLARATION]: declaration(old),
+      [APP]: rights(null),
+    });
+
+    const before = await set(reading);
+    const shown = await set(live);
+    const after = await set(answering, {
+      ageRating: { sharedLocation: false, datingAndRelationships: false },
+    });
+
+    expect(before.warnings).toEqual([
+      'Some age rating questions are not answered (datingAndRelationships, sharedLocation). App Review submission might fail until they are answered with set_app_info.',
+    ]);
+    expect(before.after.ageRating).toMatchObject({
+      sharedLocation: null,
+      datingAndRelationships: null,
+    });
+    expect(sentWrites(answering)).toEqual([
+      patch('ageRatingDeclarations', 'a1', {
+        attributes: { sharedLocation: false, datingAndRelationships: false },
+      }),
+    ]);
+    expect(after.warnings).toEqual([]);
+    expect(shown.warnings).toEqual([]);
   });
 
   it('途中で失敗したら、済んだことを添えて返す', async () => {

@@ -317,7 +317,7 @@ server.registerTool(
   {
     title: 'Set App Information',
     description:
-      'Sets the categories, the content rights declaration, and the age rating answers in App Information. Writes the categories and the age rating to the editable App Information (prepare for submission or rejected). Changes only the fields you pass that differ from the current values. After it writes, returns the age rating that the App Store assigns (appStoreAgeRating). If you pass nothing, returns the current values. Returns the values before and after the change, and any warnings.',
+      'Sets the categories, the content rights declaration, and the age rating answers in App Information. Writes the categories and the age rating to the editable App Information (prepare for submission or rejected). Changes only the fields you pass that differ from the current values. After it writes, returns the age rating that the App Store assigns (appStoreAgeRating). If you pass nothing, returns the current values. Returns the values before and after the change, and any warnings, including the age rating questions that are not answered.',
     inputSchema: z.object({
       ...appArguments,
       primaryCategory: categoryId('Primary category ID (for example, GAMES or EDUCATION)'),
@@ -422,7 +422,7 @@ server.registerTool(
   {
     title: 'Submit for App Review',
     description:
-      "Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the submission.",
+      "Submits a version for App Review. First checks that a build is selected, that the build version matches the version number, that the build finished processing, and that the export compliance answers exist. Reuses an unfinished submission if one exists. If the version is already submitted, returns without changes. Each call requires the user's confirmation. Returns the state before and after the submission. If App Store Connect refuses the submission and some age rating questions are not answered, the error lists them.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z
