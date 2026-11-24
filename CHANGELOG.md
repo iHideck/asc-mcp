@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Changed
 
+- The `release` skill enters the settings that the API does not support (creating an app, App Privacy, and availability on Mac and Apple Vision Pro) on the App Store Connect website with Claude in Chrome. It asks the user before it creates the app or publishes App Privacy. Without Claude in Chrome, it asks the user to enter them as before.
+
 - `submit_for_review` and `cancel_review` no longer ask for confirmation in Claude Code, because you can withdraw a submission. `release_version`, `set_phased_release`, `set_price`, and `set_availability` still ask.
 
 ### Added
