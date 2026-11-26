@@ -28,16 +28,21 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `cancel_review` | Withdraws a version that is waiting for App Review or in App Review. |
 | `release_version` | Releases a version that passed App Review and is waiting for release. You cannot undo a release. Each call requires your confirmation. |
 | `set_phased_release` | Pauses, resumes, or completes a phased release. You cannot undo a release to all users. Each call requires your confirmation. |
+| `ensure_analytics_reports` | Creates the analytics report request of an app if it has none, and returns the names of its reports. Apple generates the first reports 1 to 2 days later. |
+| `get_analytics_report` | Reads an analytics report (impressions, product page views, downloads, sessions, and more) for a date range, then filters, groups, and sums its rows. Returns whether the reports are still being generated. |
+| `get_sales_report` | Reads a Sales and Trends report for one date, then filters, groups, and sums its rows. |
 
 ## Skill
 
 `/asc-mcp:release` uses the tools above to take a version from preparation through App Review to release. Preparation includes the first-time setup of a new app. When you say something like "Prepare the next version" or "Submit it for review", Claude loads the skill.
 
+`/asc-mcp:analytics` reads impressions, product page views, first-time downloads, conversion, and sales of an app, also by territory. Retention is not in the API. Claude loads it when you ask something like "How many downloads did the app get last week?"
+
 ## Install
 
 The MCP server runs on the Node in your PATH. It requires Node 24 or later.
 
-1. In App Store Connect, go to **Users and Access** > **Integrations** > **App Store Connect API** and create a team key. Set the role to App Manager or Admin. If you already have a team key with one of these roles, you can use that key.
+1. In App Store Connect, go to **Users and Access** > **Integrations** > **App Store Connect API** and create a team key. Set the role to App Manager or Admin. `ensure_analytics_reports` requires Admin. If you already have a team key with one of these roles, you can use that key.
 2. Move the downloaded `AuthKey_<Key ID>.p8` file to `~/.appstoreconnect/private_keys/`. Run `chmod 600` on the file so that only you can read it.
 3. In Claude Code, run these commands:
 

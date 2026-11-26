@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { ensureAnalyticsReports, getAnalyticsReport, GRANULARITIES } from './analytics.ts';
 import { ageRatingInput, CONTENT_RIGHTS, setAppInfo } from './app-info.ts';
 import { listApps } from './apps.ts';
 import { setAvailability } from './availability.ts';
@@ -16,6 +17,12 @@ import { setFreePrice } from './price.ts';
 import { getReleaseStatus } from './release-status.ts';
 import { PHASED_RELEASE_ACTIONS, releaseVersion, setPhasedRelease } from './release.ts';
 import { copyReviewContact, setReviewDetail } from './review-detail.ts';
+import {
+  getSalesReport,
+  SALES_FREQUENCIES,
+  SALES_REPORT_SUBTYPES,
+  SALES_REPORT_TYPES,
+} from './sales.ts';
 import { cancelReview, submitForReview } from './review-submission.ts';
 import {
   DISPLAY_TYPE_NAMES,
@@ -740,6 +747,116 @@ server.registerTool(
     _meta: NEEDS_APPROVAL,
   },
   async (request) => json(await setPhasedRelease(await getClient(), request)),
+);
+
+const aggregationArguments = {
+  filters: z
+    .record(z.string().min(1), z.array(z.string()).min(1))
+    .optional()
+    .describe(
+      'Rows to keep, by column name and the values to keep (for example, {"Event": ["Impression"], "Territory": ["JP"]}). Values are not case-sensitive',
+    ),
+  groupBy: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'Columns to group the rows by (for example, ["Territory"] or ["Date", "Event"]). If omitted, returns only the totals',
+    ),
+  metrics: z
+    .array(z.string().min(1))
+    .min(1)
+    .optional()
+    .describe(
+      'Columns to sum (for example, ["Counts"]). If omitted, sums every numeric column except IDs, dates, versions, prices, and proceeds',
+    ),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(200)
+    .describe('Maximum number of grouped rows to return, largest first'),
+};
+
+server.registerTool(
+  'ensure_analytics_reports',
+  {
+    title: 'Request analytics reports',
+    description:
+      'Creates an ongoing analytics report request for the app if it has none, and returns the names and categories of the reports that the request provides. Apple generates the first reports 1 to 2 days after the request is created, then adds new ones daily. Creating the request requires an API key with the Admin role. This is the only change that the analytics and sales tools make. If the request already exists, returns without changes.',
+    inputSchema: z.object({ bundleId: appArguments.bundleId }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  async ({ bundleId }) => json(await ensureAnalyticsReports(await getClient(), bundleId)),
+);
+
+server.registerTool(
+  'get_analytics_report',
+  {
+    title: 'Get analytics report',
+    description:
+      'Reads an App Store Connect analytics report of the app for a date range, then filters, groups, and sums its rows. For example, "App Store Discovery and Engagement Standard" has impressions and product page views (Event, Page Type, Counts, Unique Counts), "App Store Downloads Standard" has first-time downloads (Download Type, Counts), and both have Territory. If a date is in more than one report instance, uses only the newest instance, as Apple requires. Unique Counts are unique within each row of the report, so their sum over days or groups is not a count of unique users. Returns status NOT_REQUESTED or STOPPED (call ensure_analytics_reports), PROCESSING (the first reports are not ready yet; try again in a day), NO_DATA, or READY with the rows. If the report name is wrong, the error lists the available reports.',
+    inputSchema: z.object({
+      bundleId: appArguments.bundleId,
+      reportName: z
+        .string()
+        .min(1)
+        .describe(
+          'Name of the report as ensure_analytics_reports returns it (for example, App Store Downloads Standard)',
+        ),
+      granularity: z
+        .enum(GRANULARITIES)
+        .default('DAILY')
+        .describe('Period of each report instance. Some reports have only DAILY'),
+      startDate: z.iso.date().describe('First date to include (for example, 2026-11-16)'),
+      endDate: z.iso.date().describe('Last date to include (for example, 2026-11-22)'),
+      ...aggregationArguments,
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (request) => json(await getAnalyticsReport(await getClient(), request)),
+);
+
+server.registerTool(
+  'get_sales_report',
+  {
+    title: 'Get sales report',
+    description:
+      'Reads a Sales and Trends report (the same data as Sales and Trends > Reports in App Store Connect) for one date, then filters, groups, and sums its rows. For example, the SALES SUMMARY report has Units by Product Type Identifier and Country Code. Pass bundleId to keep only the rows of that app (in SALES reports, the rows of in-app purchases have their own Apple Identifier and are not kept). Returns status NO_DATA if Apple has no report for the date, which happens when nothing was recorded or the report is not ready yet.',
+    inputSchema: z.object({
+      vendorNumber: z
+        .string()
+        .regex(/^\d+$/)
+        .describe(
+          'Vendor number, shown in App Store Connect under Payments and Financial Reports (for example, 85012345)',
+        ),
+      reportType: z.enum(SALES_REPORT_TYPES).default('SALES'),
+      reportSubType: z.enum(SALES_REPORT_SUBTYPES).default('SUMMARY'),
+      frequency: z.enum(SALES_FREQUENCIES).default('DAILY'),
+      reportDate: z
+        .string()
+        .min(1)
+        .describe(
+          'Date of the report: YYYY-MM-DD for DAILY, the Sunday that ends the week (YYYY-MM-DD) for WEEKLY, YYYY-MM for MONTHLY, and YYYY for YEARLY',
+        ),
+      version: z
+        .string()
+        .regex(/^\d+_\d+$/)
+        .optional()
+        .describe(
+          'Version of the report format (for example, 1_3 for SUBSCRIPTION). If omitted, Apple uses its default',
+        ),
+      bundleId: appArguments.bundleId.optional(),
+      ...aggregationArguments,
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (request) => json(await getSalesReport(await getClient(), request)),
 );
 
 await server.connect(new StdioServerTransport());
