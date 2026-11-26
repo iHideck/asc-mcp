@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- Tools that read App Store Connect analytics and sales: `ensure_analytics_reports` (creates the ongoing analytics report request, which is the only change these tools make), `get_analytics_report` (impressions, product page views, downloads, sessions, and other App Analytics reports, filtered, grouped, and summed; reports `PROCESSING` until Apple generates the first reports), and `get_sales_report` (Sales and Trends). The `analytics` skill describes which report and columns give each number.
 - `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.
 - `set_app_info` warns about age rating questions that are not answered, even when the App Store age rating is already set.
 - When App Store Connect refuses `submit_for_review` and some age rating questions are not answered, the error lists them.

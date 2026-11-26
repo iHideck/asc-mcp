@@ -28,16 +28,21 @@ App Store Connect API を呼ぶ MCP サーバー（非公式）。Claude Code �
 | `cancel_review` | 審査待ち・審査中の版を、審査から取り下げる |
 | `release_version` | 審査が通って公開を待っている版を公開する。取り消せない。呼ぶたびに、利用者の確認が要る |
 | `set_phased_release` | 段階的リリースを、止める・再開する・全員に出す。全員に出すのは取り消せない。呼ぶたびに、利用者の確認が要る |
+| `ensure_analytics_reports` | アプリのアナリティクスのレポートのリクエストが無ければ作り、読めるレポートの名前を返す。最初のレポートができるのは 1〜2 日後 |
+| `get_analytics_report` | アナリティクスのレポート（インプレッション・プロダクトページの閲覧・ダウンロード・セッションなど）を期間で読み、行を絞ってまとめ、足した数を返す。レポートがまだできていないときは、そう返す |
+| `get_sales_report` | 売上とトレンドのレポートを1日分読み、行を絞ってまとめ、足した数を返す |
 
 ## スキル
 
 `/asc-mcp:release` は、次の版の準備（初めて出すアプリの設定を含む）から、審査に出して公開するまでを、上のツールでつなぐ。「次の版を出したい」「審査に出して」と頼むと、Claude が読み込む。
 
+`/asc-mcp:analytics` は、アプリのインプレッション・プロダクトページの閲覧・初回ダウンロード・コンバージョン・売上を、国別にも読む。リテンションは API に無い。「先週のダウンロード数は？」と聞くと、Claude が読み込む。
+
 ## 入れ方
 
 MCP サーバーは、PATH にある Node（24 以上）で動く。
 
-1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager か Admin にする。そのロールのチームキーがもうあれば、それを使える
+1. App Store Connect の「ユーザとアクセス」→「統合」→「App Store Connect API」で、チームキーを作る。ロールは App Manager か Admin にする。`ensure_analytics_reports` には Admin が要る。そのロールのチームキーがもうあれば、それを使える
 2. ダウンロードした `AuthKey_<Key ID>.p8` を `~/.appstoreconnect/private_keys/` に置き、`chmod 600` で自分だけが読めるようにする
 3. Claude Code で、次を打つ
 

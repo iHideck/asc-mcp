@@ -1,8 +1,9 @@
+import { gunzipSync } from 'node:zlib';
 import { z } from 'zod';
 
 const ORIGIN = 'https://api.appstoreconnect.apple.com';
 const TIMEOUT_MS = 30_000;
-// 写真のファイルは API の本文より大きい。回線が遅くても送り終えられるだけ待つ
+// 写真やレポートのファイルは API の本文より大きい。回線が遅くても送り終えられるだけ待つ
 const UPLOAD_TIMEOUT_MS = 120_000;
 
 export class AscApiError extends Error {
@@ -67,6 +68,8 @@ export type AscClient = {
   ): Promise<void>;
   remove(type: string, id: string): Promise<void>;
   upload(operation: UploadOperation, file: Uint8Array<ArrayBuffer>): Promise<void>;
+  getReportFile(path: string, params: Params): Promise<string>;
+  download(url: string): Promise<string>;
 };
 
 const Page = z.object({
@@ -154,7 +157,12 @@ export function createClient(
   fetchFn: typeof fetch = fetch,
   readOnly = false,
 ): AscClient {
-  async function call(method: Method, url: URL, body?: object): Promise<unknown> {
+  async function send(
+    method: Method,
+    url: URL,
+    body?: object,
+    accept = 'application/json',
+  ): Promise<Response> {
     // 次のページの URL は応答から受け取る。App Store Connect API 以外には、トークンを送らない
     if (url.origin !== ORIGIN) {
       throw new Error(`Does not call URLs outside the App Store Connect API: ${url.origin}`);
@@ -170,6 +178,7 @@ export function createClient(
         method,
         headers: {
           Authorization: `Bearer ${token()}`,
+          Accept: accept,
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         body: body === undefined ? null : JSON.stringify(body),
@@ -181,18 +190,23 @@ export function createClient(
         { cause: error },
       );
     }
-    if (response.status === 204) {
-      return undefined;
-    }
-    const parsed: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
+      const parsed: unknown = await response.json().catch(() => undefined);
       const message = describeError(response.status, parsed);
       throw new AscApiError(
         response.status,
         method !== 'GET' && response.status >= 500 ? `${message}\n${WRITE_UNKNOWN_HINT}` : message,
       );
     }
-    return parsed;
+    return response;
+  }
+
+  async function call(method: Method, url: URL, body?: object): Promise<unknown> {
+    const response = await send(method, url, body);
+    if (response.status === 204) {
+      return undefined;
+    }
+    return response.json().catch(() => undefined);
   }
 
   async function read<D, I>(
@@ -296,6 +310,30 @@ export function createClient(
         throw new Error(`${where} returned ${response.status}. ${RETRY_HINT}`);
       }
     },
+    async getReportFile(path, params) {
+      const response = await send('GET', urlOf(path, params), undefined, 'application/a-gzip');
+      return textOf(new Uint8Array(await response.arrayBuffer()));
+    },
+    // レポートの区切りの置き場所は、Apple が応答で渡す、API の外の URL（署名つき）。API のトークンは送らない
+    async download(url) {
+      const target = new URL(url);
+      const where = `GET ${target.origin}${target.pathname}`;
+      if (target.protocol !== 'https:') {
+        throw new Error(`Does not download from a URL that is not HTTPS: ${where}`);
+      }
+      let response: Response;
+      try {
+        response = await fetchFn(target, { signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS) });
+      } catch (error) {
+        throw new Error(`Could not connect to ${where} (${reasonOf(error, UPLOAD_TIMEOUT_MS)}).`, {
+          cause: error,
+        });
+      }
+      if (!response.ok) {
+        throw new Error(`${where} returned ${response.status}.`);
+      }
+      return textOf(new Uint8Array(await response.arrayBuffer()));
+    },
   };
 }
 
@@ -343,6 +381,12 @@ function describeDetail(error: z.infer<typeof ErrorDetail>): string {
   const where = error.source?.pointer ?? error.source?.parameter;
   const text = [error.code, error.title, error.detail].filter(Boolean).join(': ');
   return where === undefined ? text : `${text}（${where}）`;
+}
+
+// レポートは gzip で届く。fetch が解いて渡すこともあるので、gzip の印があるときだけ解く
+function textOf(bytes: Uint8Array): string {
+  const gzipped = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  return new TextDecoder().decode(gzipped ? gunzipSync(bytes) : bytes);
 }
 
 function urlOf(path: string, params: Params): URL {

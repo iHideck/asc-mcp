@@ -182,8 +182,25 @@ describe('MCP サーバー', () => {
         _meta: { 'anthropic/requiresUserInteraction': true },
         inputSchema: expect.objectContaining({ required: ['bundleId', 'action'] }),
       }),
+      expect.objectContaining({
+        name: 'ensure_analytics_reports',
+        annotations: expect.objectContaining({ readOnlyHint: false, destructiveHint: false }),
+      }),
+      expect.objectContaining({
+        name: 'get_analytics_report',
+        annotations: readOnly,
+        inputSchema: expect.objectContaining({
+          required: ['bundleId', 'reportName', 'startDate', 'endDate'],
+        }),
+      }),
+      expect.objectContaining({
+        name: 'get_sales_report',
+        annotations: readOnly,
+        inputSchema: expect.objectContaining({ required: ['vendorNumber', 'reportDate'] }),
+      }),
     ]);
     const writing = [
+      'ensure_analytics_reports',
       'ensure_version',
       'select_build',
       'set_localizations',
