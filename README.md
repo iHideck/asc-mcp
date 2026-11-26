@@ -13,7 +13,7 @@ An unofficial MCP server for the App Store Connect API. Install it as a Claude C
 | `get_localizations` | Returns the localized text of a version (description, keywords, promotional text, what's new, and URLs) and of App Information (name, subtitle, and privacy policy URL). |
 | `ensure_version` | Prepares the next version. Creates the version if no version has that number. Changes the number of the editable version if the number differs. Also sets the release type, the phased release, and the copyright to the values you pass. If you omit the copyright and the version has none, copies it from the previous version. |
 | `select_build` | Selects the build to submit for the editable version. Does not select a build that is still processing, expired, or for internal testing only. |
-| `set_localizations` | Writes localized App Store text to the editable version and App Information. Checks the character limits and URL formats before it writes. |
+| `set_localizations` | Writes localized App Store text to the editable version and App Information. Adds a locale that the app does not have yet (`name` is required to add it to App Information). Checks the locale codes, character limits, and URL formats before it writes. |
 | `replace_screenshots` | Replaces the screenshots for one language and one display type of the editable version with the files you pass. Checks that the format and size of each image fit the display type before it uploads. |
 | `set_review_detail` | Sets the review notes of the editable version and whether the app requires sign-in. Reports a missing contact or demo account. |
 | `copy_review_contact` | Copies the App Review contact from a version of another app. Does not return the contact details. |

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { createClient } from '../plugin/src/client.ts';
 import { EDITABLE_APP_INFO_STATES, REPLACED_APP_INFO_STATE } from '../plugin/src/localizations.ts';
 import { setLocalizations, type LocalizationInput } from '../plugin/src/set-localizations.ts';
-import { fakeFetch, jsonResponse, page, requestedUrls, resource, sentWrites } from './fake-api.ts';
+import {
+  created,
+  fakeFetch,
+  jsonResponse,
+  page,
+  requestedUrls,
+  resource,
+  sentWrites,
+} from './fake-api.ts';
 import { specAt } from './openapi.ts';
 
 const APP_ID = '6829263258';
@@ -198,22 +206,114 @@ describe('setLocalizations', () => {
     ]);
   });
 
-  it('版に無い言語は、ある言語を添えて返し、ほかの言語も変えない', async () => {
+  it('まだ無い言語は、渡した項目で版と App 情報に作り、作ったことを返す', async () => {
     const fetchFn = fakeFetch({
       '/v1/apps': app(),
       [VERSIONS]: page([live, draft]),
-      [VERSION_TEXTS]: page([versionText('lja', 'ja'), versionText('len', 'en-US')]),
+      [VERSION_TEXTS]: [
+        page([versionText('lja', 'ja')]),
+        page([
+          versionText('lja', 'ja'),
+          versionText('lfr', 'fr-FR', {
+            description: 'Inspection',
+            keywords: null,
+            supportUrl: null,
+          }),
+        ]),
+      ],
+      [APP_INFOS]: appInfos(),
+      [APP_INFO_TEXTS]: [
+        page([appInfoText('aja', 'ja')]),
+        page([
+          appInfoText('aja', 'ja'),
+          appInfoText('afr', 'fr-FR', { name: 'Hikeshi', subtitle: null, privacyPolicyUrl: null }),
+        ]),
+      ],
+      'POST /v1/appStoreVersionLocalizations': created('appStoreVersionLocalizations', 'lfr'),
+      'POST /v1/appInfoLocalizations': created('appInfoLocalizations', 'afr'),
+    });
+
+    const result = await set(fetchFn, [
+      { locale: 'fr-FR', description: 'Inspection', keywords: '', name: 'Hikeshi' },
+    ]);
+
+    expect(sentWrites(fetchFn)).toEqual([
+      {
+        method: 'POST',
+        path: '/v1/appStoreVersionLocalizations',
+        body: {
+          data: {
+            type: 'appStoreVersionLocalizations',
+            attributes: { locale: 'fr-FR', description: 'Inspection' },
+            relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: 'v101' } } },
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/appInfoLocalizations',
+        body: {
+          data: {
+            type: 'appInfoLocalizations',
+            attributes: { locale: 'fr-FR', name: 'Hikeshi' },
+            relationships: { appInfo: { data: { type: 'appInfos', id: 'i-edit' } } },
+          },
+        },
+      },
+    ]);
+    expect(result.addedLocales).toEqual([
+      { locale: 'fr-FR', to: 'version' },
+      { locale: 'fr-FR', to: 'appInfo' },
+    ]);
+    expect(result.changes).toEqual([
+      { locale: 'fr-FR', field: 'description', before: null, after: 'Inspection' },
+      { locale: 'fr-FR', field: 'name', before: null, after: 'Hikeshi' },
+    ]);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('Added locale fr-FR to the version text'),
+      expect.stringContaining('Added locale fr-FR to the App Information'),
+    ]);
+  });
+
+  it('App 情報にまだ無い言語で name が無ければ、ほかの言語も含めて何も変えずに止める', async () => {
+    const fetchFn = fakeFetch({
+      '/v1/apps': app(),
+      [VERSIONS]: page([live, draft]),
+      [VERSION_TEXTS]: page([versionText('lja', 'ja')]),
+      [APP_INFOS]: appInfos(),
+      [APP_INFO_TEXTS]: page([appInfoText('aja', 'ja')]),
     });
 
     await expect(
       set(fetchFn, [
         { locale: 'ja', keywords: '点検' },
-        { locale: 'fr-FR', description: 'Inspection' },
+        { locale: 'de-DE', subtitle: 'Brandschutz' },
       ]),
     ).rejects.toThrow(
-      /No version text exists for locale fr-FR\. The version locales are ja, en-US[\s\S]*Add locales in App Store Connect/,
+      /Locale de-DE is not in the App Information yet\. Pass name to add it[\s\S]*Nothing was changed/,
     );
     expect(sentWrites(fetchFn)).toEqual([]);
+  });
+
+  it('App Store Connect が受け付けない言語コードは、近いコードを添えて、何も呼ばずに止める', async () => {
+    const fetchFn = fakeFetch({});
+
+    const result = set(fetchFn, [
+      { locale: 'ja-JP', keywords: '点検' },
+      { locale: 'fr', description: 'Inspection' },
+      { locale: 'xx-YY', description: 'Inspection' },
+    ]);
+
+    await expect(result).rejects.toThrow(
+      [
+        'The check before writing found problems. Nothing was changed.',
+        '- Locale ja-JP is not an App Store locale (did you mean ja?)',
+        '- Locale fr is not an App Store locale (did you mean fr-FR or fr-CA?)',
+        '- Locale xx-YY is not an App Store locale',
+        'App Store Connect accepts these locales: ar-SA, bn-BD,',
+      ].join('\n'),
+    );
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('初めて出す版では、新機能の文を飛ばし、ほかの項目は入れる', async () => {

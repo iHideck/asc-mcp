@@ -199,7 +199,7 @@ server.registerTool(
   {
     title: 'Set localized text',
     description:
-      "Writes localized App Store text for each language to the editable version (prepare for submission or rejected). Changes only the fields you pass, among the version text (description, keywords, promotional text, what's new, and URLs) and the App Information text (name, subtitle, and privacy policy URL). Checks the character limits and URL formats before it writes, and changes nothing if any value fails. Skips what's new for the first version of an app. Does not add languages. Returns each changed field before and after the change, and any warnings.",
+      "Writes localized App Store text for each language to the editable version (prepare for submission or rejected). Changes only the fields you pass, among the version text (description, keywords, promotional text, what's new, and URLs) and the App Information text (name, subtitle, and privacy policy URL). Checks the character limits and URL formats before it writes, and changes nothing if any value fails. Skips what's new for the first version of an app. If a locale is not in the version or the App Information yet, adds it with the fields you pass (adding a locale to the App Information requires name). Stops before writing if a locale code is not one that App Store Connect accepts. Returns the added locales, each changed field before and after the change, and any warnings.",
     inputSchema: z.object({
       ...appArguments,
       versionString: z

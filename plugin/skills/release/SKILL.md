@@ -25,6 +25,7 @@ The tools that write compare the current state with your input and change only t
    - If you omit `copyright`, `ensure_version` copies the copyright of the previous version into a version that has none. For the first version, or to change the year or the owner, pass `copyright` (the year and the owner, such as `2026 Example Inc.`, without the © symbol). App Review requires it.
 2. Select the build with `select_build`.
 3. Read the current text with `get_localizations`, then write the text to change with `set_localizations`. Unless this is the first version of the app, every locale needs the What's New text (`whatsNew`).
+   - To add a language, pass its App Store Connect locale code (for example, `fr-FR`, `es-MX`, or `de-DE`) to `set_localizations`. It adds the locale to the version and App Information. To add it to App Information, pass `name`. A new locale starts empty, so also pass its description, keywords, and support URL. Tell the user the locales in `addedLocales`.
    - If the app's repository has rules or a source of truth for the App Store text (for example, `docs/release.md`), follow them. After you write the text, check that it matches the source of truth.
 4. To change the screenshots, use `replace_screenshots` for each locale and display type (`displayType`). A new version starts with a copy of the screenshots of the previous version.
    - If the app's repository has rules for taking screenshots or for the display types to fill (for example, `docs/release.md`), follow them.

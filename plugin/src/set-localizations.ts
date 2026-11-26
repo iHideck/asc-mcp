@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { findApp, type AppSummary } from './apps.ts';
 import type { AscClient, Attributes } from './client.ts';
 import {
+  APP_STORE_LOCALES,
   findEditableAppInfo,
   readAppInfoLocalizations,
   readVersionLocalizations,
@@ -60,7 +61,9 @@ export const localizationInput = z.object({
   locale: z
     .string()
     .min(1)
-    .describe('The locale code, such as ja or en-US. get_localizations shows the codes.'),
+    .describe(
+      'The App Store Connect locale code, such as ja, en-US, or fr-FR. get_localizations shows the codes that the app has. A locale that the app does not have yet is added.',
+    ),
   ...(Object.fromEntries(
     FIELD_NAMES.map((name) => [
       name,
@@ -91,10 +94,13 @@ export type LocalizationChange = {
 
 export type SkippedField = { locale: string; field: FieldName; reason: string };
 
+export type AddedLocale = { locale: string; to: 'version' | 'appInfo' };
+
 export type SetLocalizationsResult = {
   app: AppSummary;
   platform: Platform;
   version: { versionString: string; state: string };
+  addedLocales: AddedLocale[];
   changes: LocalizationChange[];
   skipped: SkippedField[];
   warnings: string[];
@@ -103,12 +109,18 @@ export type SetLocalizationsResult = {
 type Wanted = { locale: string; values: Partial<Record<FieldName, string | null>> };
 type Current = { id: string; locale: string; values: Partial<Record<FieldName, string | null>> };
 type Snapshot = Record<Resource, Current[]>;
+// id が無いものは、まだ無い言語なので作る
 type Write = {
   resource: Resource;
-  id: string;
+  id: string | undefined;
   locale: string;
   fields: FieldName[];
   attributes: Attributes;
+};
+
+const ADDED_TO: Record<Resource, { to: AddedLocale['to']; label: string }> = {
+  appStoreVersionLocalizations: { to: 'version', label: 'version text' },
+  appInfoLocalizations: { to: 'appInfo', label: 'App Information' },
 };
 
 export async function setLocalizations(
@@ -145,15 +157,32 @@ export async function setLocalizations(
       (name) => values[name] !== undefined && rule(name).resource === 'appInfoLocalizations',
     ),
   );
-  const read = () => readSnapshot(client, app.appleId, version.id, needsAppInfo);
+  const appInfo = needsAppInfo
+    ? await findEditableAppInfo(client, app.appleId, 'name, subtitle, and privacy policy URL')
+    : undefined;
+  const parents: Record<Resource, Record<string, { type: string; id: string }>> = {
+    appStoreVersionLocalizations: { appStoreVersion: { type: 'appStoreVersions', id: version.id } },
+    appInfoLocalizations:
+      appInfo === undefined ? {} : { appInfo: { type: 'appInfos', id: appInfo.id } },
+  };
+  const read = () => readSnapshot(client, version.id, appInfo?.id);
   const before = await read();
   const writes = plan(wanted, before);
   const progress = trackProgress();
   for (const { resource, id, locale, fields, attributes } of writes) {
     const what = `${fields.map((field) => rule(field).label).join(', ')} for ${locale}`;
-    await progress.write(`updating the ${what}`, `Updated the ${what}`, () =>
-      client.update(resource, id, attributes),
-    );
+    if (id === undefined) {
+      const where = ADDED_TO[resource].label;
+      await progress.write(
+        `adding locale ${locale} to the ${where} with the ${what}`,
+        `Added locale ${locale} to the ${where} with the ${what}`,
+        () => client.create(resource, { locale, ...attributes }, parents[resource]),
+      );
+    } else {
+      await progress.write(`updating the ${what}`, `Updated the ${what}`, () =>
+        client.update(resource, id, attributes),
+      );
+    }
   }
   const after =
     writes.length === 0 ? before : await progress.read('rereading the changed text', read);
@@ -165,19 +194,27 @@ export async function setLocalizations(
       after: valueIn(after, write, field),
     })),
   );
+  const added = writes.filter(({ id }) => id === undefined);
   return {
     app,
     platform: request.platform,
     version: { versionString: version.status.versionString, state: version.status.state },
+    addedLocales: added.map(({ locale, resource }) => ({ locale, to: ADDED_TO[resource].to })),
     changes,
     skipped,
-    warnings: changes.flatMap(({ locale, field, after: stored }) =>
-      stored === (wanted.find((entry) => entry.locale === locale)?.values[field] ?? null)
-        ? []
-        : [
-            `The value in App Store Connect differs from the requested value: ${rule(field).label} for ${locale} (Apple may have corrected it. Check it with get_localizations.)`,
-          ],
-    ),
+    warnings: [
+      ...added.map(
+        ({ locale, resource }) =>
+          `Added locale ${locale} to the ${ADDED_TO[resource].label}. The fields you did not pass are empty. Check them with get_localizations`,
+      ),
+      ...changes.flatMap(({ locale, field, after: stored }) =>
+        stored === (wanted.find((entry) => entry.locale === locale)?.values[field] ?? null)
+          ? []
+          : [
+              `The value in App Store Connect differs from the requested value: ${rule(field).label} for ${locale} (Apple may have corrected it. Check it with get_localizations.)`,
+            ],
+      ),
+    ],
   };
 }
 
@@ -189,6 +226,8 @@ function checkTexts(localizations: LocalizationInput[]): void {
   const problems = repeated.map(
     (locale) => `Locale ${locale} appears more than once. Merge the entries into one`,
   );
+  const unknown = [...new Set(locales.filter((locale) => !APP_STORE_LOCALES.includes(locale)))];
+  problems.push(...unknown.map(describeUnknownLocale));
   for (const entry of localizations) {
     for (const name of FIELD_NAMES) {
       const value = entry[name];
@@ -207,20 +246,31 @@ function checkTexts(localizations: LocalizationInput[]): void {
   }
   if (problems.length > 0) {
     throw new Error(
-      `The check before writing found problems. Nothing was changed.\n${problems.map((problem) => `- ${problem}`).join('\n')}`,
+      [
+        'The check before writing found problems. Nothing was changed.',
+        ...problems.map((problem) => `- ${problem}`),
+        ...(unknown.length === 0
+          ? []
+          : [`App Store Connect accepts these locales: ${APP_STORE_LOCALES.join(', ')}`]),
+      ].join('\n'),
     );
   }
 }
 
+function describeUnknownLocale(locale: string): string {
+  const language = (code: string) => code.split('-')[0]?.toLowerCase();
+  const similar = APP_STORE_LOCALES.filter((code) => language(code) === language(locale));
+  return `Locale ${locale} is not an App Store locale${similar.length === 0 ? '' : ` (did you mean ${similar.join(' or ')}?)`}`;
+}
+
 async function readSnapshot(
   client: AscClient,
-  appleId: string,
   versionId: string,
-  withAppInfo: boolean,
+  appInfoId: string | undefined,
 ): Promise<Snapshot> {
   const [versionLocalizations, appInfoLocalizations] = await Promise.all([
     readVersionLocalizations(client, versionId),
-    withAppInfo ? editableAppInfoLocalizations(client, appleId) : [],
+    appInfoId === undefined ? [] : readAppInfoLocalizations(client, appInfoId),
   ]);
   return {
     appStoreVersionLocalizations: versionLocalizations.map(
@@ -234,17 +284,8 @@ async function readSnapshot(
   };
 }
 
-async function editableAppInfoLocalizations(client: AscClient, appleId: string) {
-  const editable = await findEditableAppInfo(
-    client,
-    appleId,
-    'name, subtitle, and privacy policy URL',
-  );
-  return readAppInfoLocalizations(client, editable.id);
-}
-
 function plan(wanted: Wanted[], current: Snapshot): Write[] {
-  const missing: string[] = [];
+  const problems: string[] = [];
   const writes: Write[] = [];
   for (const { locale, values } of wanted) {
     for (const resource of RESOURCES) {
@@ -255,37 +296,42 @@ function plan(wanted: Wanted[], current: Snapshot): Write[] {
         continue;
       }
       const target = current[resource].find((candidate) => candidate.locale === locale);
-      if (target === undefined) {
-        const known = current[resource].map((candidate) => candidate.locale).join(', ');
-        missing.push(
-          resource === 'appInfoLocalizations'
-            ? `No App Information text exists for locale ${locale}. The App Information locales are ${known}`
-            : `No version text exists for locale ${locale}. The version locales are ${known}`,
+      // まだ無い言語の項目は空なので、消す（null）ものは送らない
+      const changed = fields.filter(
+        (name) => values[name] !== (target === undefined ? null : target.values[name]),
+      );
+      if (changed.length === 0) {
+        continue;
+      }
+      if (
+        target === undefined &&
+        resource === 'appInfoLocalizations' &&
+        (values.name ?? null) === null
+      ) {
+        problems.push(
+          `Locale ${locale} is not in the App Information yet. Pass name to add it (App Store Connect requires a name for each locale)`,
         );
         continue;
       }
-      const changed = fields.filter((name) => values[name] !== target.values[name]);
-      if (changed.length > 0) {
-        writes.push({
-          resource,
-          id: target.id,
-          locale,
-          fields: changed,
-          attributes: Object.fromEntries(changed.map((name) => [name, values[name] ?? null])),
-        });
-      }
+      writes.push({
+        resource,
+        id: target?.id,
+        locale,
+        fields: changed,
+        attributes: Object.fromEntries(changed.map((name) => [name, values[name] ?? null])),
+      });
     }
   }
-  if (missing.length > 0) {
-    throw new Error(
-      `${missing.join('.\n')}.\nAdd locales in App Store Connect. Nothing was changed.`,
-    );
+  if (problems.length > 0) {
+    throw new Error(`${problems.join('.\n')}.\nNothing was changed.`);
   }
   return writes;
 }
 
 function valueIn(snapshot: Snapshot, write: Write, field: FieldName): string | null {
-  return snapshot[write.resource].find(({ id }) => id === write.id)?.values[field] ?? null;
+  return (
+    snapshot[write.resource].find(({ locale }) => locale === write.locale)?.values[field] ?? null
+  );
 }
 
 function isWebUrl(value: string): boolean {
