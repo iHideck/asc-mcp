@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- `set_localizations` adds a locale that the editable version or App Information does not have yet, with the fields you pass, and returns it in `addedLocales` and `warnings`. Adding a locale to App Information requires `name`. Before it writes, it stops if a locale code is not one that App Store Connect accepts (for example, `ja-JP` or `fr`), and suggests similar codes.
 - Tools that read App Store Connect analytics and sales: `ensure_analytics_reports` (creates the ongoing analytics report request, which is the only change these tools make), `get_analytics_report` (impressions, product page views, downloads, sessions, and other App Analytics reports, filtered, grouped, and summed; reports `PROCESSING` until Apple generates the first reports), and `get_sales_report` (Sales and Trends). The `analytics` skill describes which report and columns give each number.
 - `set_app_info` reads and sets the age rating questions `sharedLocation` and `datingAndRelationships`.
 - `set_app_info` warns about age rating questions that are not answered, even when the App Store age rating is already set.
