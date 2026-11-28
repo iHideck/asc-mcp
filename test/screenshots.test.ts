@@ -38,6 +38,7 @@ const pictures = {
   detail: { name: '4_detail.jpg', bytes: jpeg(1206, 2622) },
   large: { name: 'large.png', bytes: png(1320, 2868, 'large') },
   ipad: { name: 'ipad.jpg', bytes: jpeg(2064, 2752) },
+  watch: { name: 'watch.png', bytes: png(416, 496, 'watch') },
   progressive: { name: 'progressive.jpg', bytes: jpeg(1668, 2224, 0xc2) },
   text: { name: 'notes.txt', bytes: Buffer.from('画面写真ではない') },
   shortPng: { name: 'short.png', bytes: png(1206, 2622, 'short').subarray(0, 20) },
@@ -734,7 +735,16 @@ describe('replaceScreenshots', () => {
   it('大きさが欄と合わない写真や、読めないファイルがあれば、何も送らずに止める', async () => {
     const fetchFn = fakeFetch({});
     const files = [
-      ...request('question', 'large', 'ipad', 'progressive', 'text', 'shortPng', 'shortJpeg').files,
+      ...request(
+        'question',
+        'large',
+        'ipad',
+        'watch',
+        'progressive',
+        'text',
+        'shortPng',
+        'shortJpeg',
+      ).files,
       join(dir, 'missing.png'),
       'shots/1_question.png',
     ];
@@ -748,6 +758,9 @@ describe('replaceScreenshots', () => {
     );
     expect(message).toContain(
       `${pathOf('ipad')}: 2064x2752 is not a size for this display type (it fits APP_IPAD_PRO_3GEN_129)`,
+    );
+    expect(message).toContain(
+      `${pathOf('watch')}: 416x496 is not a size for this display type (it fits APP_WATCH_SERIES_10)`,
     );
     expect(message).toContain(
       `${pathOf('progressive')}: 1668x2224 is not a size for this display type (it fits APP_IPAD_105)`,

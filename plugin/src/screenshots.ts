@@ -83,6 +83,27 @@ export const DISPLAY_TYPES = {
       '1024x768',
     ],
   },
+  // Apple Watch の写真は縦向きだけ。iOS の版の同じ言語に入る
+  APP_WATCH_ULTRA: {
+    label: 'Apple Watch Ultra',
+    sizes: ['422x514', '410x502'],
+  },
+  APP_WATCH_SERIES_10: {
+    label: 'Apple Watch Series 10 and later',
+    sizes: ['416x496'],
+  },
+  APP_WATCH_SERIES_7: {
+    label: 'Apple Watch Series 7 to 9',
+    sizes: ['396x484'],
+  },
+  APP_WATCH_SERIES_4: {
+    label: 'Apple Watch Series 4 to 6 and SE',
+    sizes: ['368x448'],
+  },
+  APP_WATCH_SERIES_3: {
+    label: 'Apple Watch Series 3 and earlier',
+    sizes: ['312x390'],
+  },
 } satisfies Record<string, { label: string; sizes: string[] }>;
 
 export type DisplayType = keyof typeof DISPLAY_TYPES;
