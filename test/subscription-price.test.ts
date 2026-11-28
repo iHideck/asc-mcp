@@ -75,7 +75,7 @@ function setPrice(fetchFn: typeof fetch, overrides: Partial<SetSubscriptionPrice
 }
 
 describe('setSubscriptionPrice', () => {
-  it('国を決めてから、基準の国の価格に近い価格を、国ごとに入れる', async () => {
+  it('国を決めてから、基準の国の価格に近い価格を、売らない国も含めて国ごとに入れる', async () => {
     const fetchFn = fakeFetch({
       ...priceRoutes(),
       [PLANS]: [page([]), page([planAvailability('pa1')])],
@@ -86,6 +86,7 @@ describe('setSubscriptionPrice', () => {
         created('subscriptionPrices', 'p1'),
         created('subscriptionPrices', 'p2'),
         created('subscriptionPrices', 'p3'),
+        created('subscriptionPrices', 'p4'),
       ],
     });
 
@@ -109,7 +110,7 @@ describe('setSubscriptionPrice', () => {
       },
     });
     expect(writes.slice(1).map(({ body }) => body)).toEqual(
-      ['GBR', 'JPN', 'USA'].map((id) => ({
+      ['CAN', 'GBR', 'JPN', 'USA'].map((id) => ({
         data: {
           type: 'subscriptionPrices',
           attributes: { startDate: null, planType: 'UPFRONT' },
@@ -124,7 +125,7 @@ describe('setSubscriptionPrice', () => {
     );
     expect(result).toMatchObject({
       territories: { before: [], after: ['GBR', 'JPN', 'USA'] },
-      changedPrices: ['GBR', 'JPN', 'USA'],
+      changedPrices: ['CAN', 'GBR', 'JPN', 'USA'],
       unchangedPrices: 0,
     });
   });
@@ -164,17 +165,30 @@ describe('setSubscriptionPrice', () => {
       'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories':
         noContent(),
       'DELETE /v1/subscriptionPrices/next-gbr': noContent(),
-      'POST /v1/subscriptionPrices': created('subscriptionPrices', 'p1'),
+      'POST /v1/subscriptionPrices': [
+        created('subscriptionPrices', 'p1'),
+        created('subscriptionPrices', 'p2'),
+      ],
     });
 
     const result = await setPrice(fetchFn);
 
     expect(routesOf(fetchFn)).toEqual([
       'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories',
+      'POST /v1/subscriptionPrices',
       'DELETE /v1/subscriptionPrices/next-gbr',
       'POST /v1/subscriptionPrices',
     ]);
-    expect(sentWrites(fetchFn)[2]?.body).toMatchObject({
+    expect(sentWrites(fetchFn)[1]?.body).toMatchObject({
+      data: {
+        relationships: {
+          subscriptionPricePoint: {
+            data: { type: 'subscriptionPricePoints', id: pricePointId('CAN', 2) },
+          },
+        },
+      },
+    });
+    expect(sentWrites(fetchFn)[3]?.body).toMatchObject({
       data: {
         relationships: {
           subscriptionPricePoint: {
@@ -185,7 +199,7 @@ describe('setSubscriptionPrice', () => {
     });
     expect(result).toMatchObject({
       territories: { before: ['CAN', 'GBR', 'JPN', 'USA'], after: ['GBR', 'JPN', 'USA'] },
-      changedPrices: ['GBR', 'USA'],
+      changedPrices: ['CAN', 'GBR', 'USA'],
       unchangedPrices: 1,
     });
   });
@@ -201,19 +215,19 @@ describe('setSubscriptionPrice', () => {
       [PRICES]: page([]),
       'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories':
         noContent(),
-      'POST /v1/subscriptionPrices': [
-        created('subscriptionPrices', 'p1'),
-        created('subscriptionPrices', 'p2'),
-      ],
+      'POST /v1/subscriptionPrices': ['p1', 'p2', 'p3', 'p4'].map((id) =>
+        created('subscriptionPrices', id),
+      ),
     });
 
     await setPrice(fetchFn, { territories: ['JPN', 'JPN', 'USA'] });
 
-    expect(routesOf(fetchFn)).toEqual([
+    expect(routesOf(fetchFn)[0]).toBe(
       'PATCH /v1/subscriptionPlanAvailabilities/pa1/relationships/availableTerritories',
-      'POST /v1/subscriptionPrices',
-      'POST /v1/subscriptionPrices',
-    ]);
+    );
+    expect(sentWrites(fetchFn)[0]?.body).toMatchObject({
+      data: ['JPN', 'USA'].map((id) => ({ type: 'territories', id })),
+    });
   });
 
   it('基準の国に、その価格が無ければ、近い価格を挙げて何も送らない', async () => {

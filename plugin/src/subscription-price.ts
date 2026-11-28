@@ -92,7 +92,8 @@ export async function setSubscriptionPrice(
 
   const changedPrices: string[] = [];
   let unchangedPrices = 0;
-  for (const territory of [...wanted].sort()) {
+  // 売らない国にも価格が要る。無い国があると、審査に出せない（IAP_SUBMISSION_NOT_ALLOWED_MISSING_PRICING_DATA）
+  for (const territory of [...allTerritories].sort()) {
     const pricePointId = equalized.get(territory);
     if (pricePointId === undefined) {
       warnings.push(

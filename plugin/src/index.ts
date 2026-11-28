@@ -567,7 +567,7 @@ server.registerTool(
   {
     title: 'Set subscription price',
     description:
-      "Sets the territories and the price of an auto-renewable subscription. Finds the price point of the price in the base territory, then sets the comparable price that Apple calculates (equalization) in every territory. Makes the subscription available in the territories you pass (all territories if omitted) with up-front billing, and removes it from the others. Changes only the territories whose price differs. A price takes effect immediately. If a territory has a scheduled price, removes it first. A price that took effect cannot be undone. Each call requires the user's confirmation. Returns the territories before and after, and the territories whose price changed.",
+      "Sets the territories and the price of an auto-renewable subscription. Finds the price point of the price in the base territory, then sets the comparable price that Apple calculates (equalization) in every territory, including territories where the subscription is not available, because App Review rejects a subscription that has no price in some territory. Makes the subscription available in the territories you pass (all territories if omitted) with up-front billing, and removes it from the others. Changes only the territories whose price differs. A price takes effect immediately. If a territory has a scheduled price, removes it first. A price that took effect cannot be undone. Each call requires the user's confirmation. Returns the territories before and after, and the territories whose price changed.",
     inputSchema: z.object({
       bundleId: appArguments.bundleId,
       productId,
