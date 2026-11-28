@@ -21,6 +21,10 @@ All notable changes to this project are documented in this file. The format is b
 - Tools for auto-renewable subscriptions: `get_subscriptions`, `ensure_subscription` (group, product, localized text, review notes, and review screenshot), `set_subscription_price` (territories and the price in every territory from a base price), and `set_introductory_offer` (free trial). Localized text is written to the versions of the group and the subscription, which App Store Connect API 4.4.1 added. Claude Code asks for confirmation each time `set_subscription_price` or `set_introductory_offer` is called.
 - `ensure_version` sets the copyright (`copyright`). If you omit it and the version has none, it copies the copyright of the previous version. `get_release_status` returns the copyright of each version, and `submit_for_review` stops before submission when the copyright is empty.
 
+### Fixed
+
+- `set_subscription_price` sets the price in every territory, including the territories where the subscription is not available. Before, it set the price only in the territories you passed, and App Store Connect refused to add the subscription for review (`IAP_SUBMISSION_NOT_ALLOWED_MISSING_PRICING_DATA`, shown on the website as a missing subscription price).
+
 ## [1.0.0] - 2026-11-17
 
 The first release.

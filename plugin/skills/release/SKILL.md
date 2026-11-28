@@ -60,7 +60,7 @@ When the user asks to sell an auto-renewable subscription, set it up with these 
 
 1. Read the current subscriptions with `get_subscriptions`.
 2. Create or update the group and the subscription with `ensure_subscription`. Pass the group's reference name and localized names, the product ID, the duration, the reference name, Family Sharing, the localized display names (2 to 30 characters) and descriptions (up to 45 characters), the review notes, and the absolute path of a review screenshot that shows the subscription in the app.
-3. Set the territories and the price with `set_subscription_price`. Pass the price in the base territory (for example, `480` in `JPN`). Apple sets a comparable price in every other territory. A price that took effect cannot be undone.
+3. Set the territories and the price with `set_subscription_price`. Pass the price in the base territory (for example, `480` in `JPN`). Apple sets a comparable price in every other territory, including the territories where the subscription is not available, because App Review requires a price in every territory. A price that took effect cannot be undone.
 4. To offer a free trial, call `set_introductory_offer` with its length.
 5. Tell the user the `warnings` of each tool.
 
