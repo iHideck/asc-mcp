@@ -30,6 +30,7 @@ The tools that write compare the current state with your input and change only t
 4. To change the screenshots, use `replace_screenshots` for each locale and display type (`displayType`). A new version starts with a copy of the screenshots of the previous version.
    - If the app's repository has rules for taking screenshots or for the display types to fill (for example, `docs/release.md`), follow them.
    - The first version needs at least one screenshot for the `APP_IPHONE_61` display type. An app that also supports iPad also needs screenshots for `APP_IPAD_PRO_3GEN_129`.
+   - An app whose build contains a watchOS app also needs Apple Watch screenshots for one of the `APP_WATCH_*` display types, in the same size for every locale.
 5. Set the review notes and whether the app requires sign-in with `set_review_detail`. If the App Review contact is missing, copy it from a version of another app with `copy_review_contact`.
 6. Tell the user the `warnings` and `skipped` of each tool.
 
